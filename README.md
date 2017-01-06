@@ -44,6 +44,10 @@ It deploys cluster on top of docker/docker-machine/docker-swarm and is therefore
 
 While at the same time keeps the manual intervention to a minimum.
 
+This project popped out of an idea to move all services of a peronally managed (virtual) root server to the cloud.
+The idea was to make the upgrade-mess a lot more testable and to quickly create test environments when I need them.
+First I started with quite a lot of bash scripts which became unreadable and unmanagable very quickly.
+
 ## Quick intro
 
 We will shorten the above command line to "cm <args>" instead of the huge docker command line options. As an alternative you can use the binary version or build yourself.
