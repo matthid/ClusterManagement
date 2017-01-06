@@ -1,0 +1,21 @@
+source https://nuget.org/api/v2
+
+framework: net461
+redirects: on
+
+nuget Argu
+nuget FSharp.Core
+nuget FSharp.Configuration
+nuget FSharp.Data
+nuget Mono.Posix
+nuget NUnit
+nuget Unquote
+nuget FSharp.Compiler.Service
+
+github matthid/Yaaf.FSharp.Scripting src/source/Yaaf.FSharp.Scripting/YaafFSharpScripting.fs
+
+group Build
+
+  source https://nuget.org/api/v2
+  
+  nuget FAKE

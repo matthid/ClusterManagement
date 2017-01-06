@@ -1,0 +1,6 @@
+﻿
+secrets:
+  - clustername: cluster1
+    secret: secret1
+  - clustername: cluster2
+    secret: secret2

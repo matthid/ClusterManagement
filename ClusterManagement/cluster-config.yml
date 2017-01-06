@@ -1,0 +1,15 @@
+﻿# Specify the configs, which are replaced in the config files.
+config:
+ - name: "DOMAIN"
+   value: "yaaf.de"
+ - name: "AWS_REGION"
+   value: "eu-central-1"
+ - name: "AWS_ZONE"
+   value: "eu-central-1a"
+ - name: "AWS_ACCESS_KEY_ID"
+   value: "**Amazon_ACCESS_KEY**"
+ - name: "AWS_ACCESS_KEY_SECRET"
+   value: "**Amazon_ACCESS_SECRET**"
+globalConfig:
+  masterAsWorker: true
+  isInitialized: false

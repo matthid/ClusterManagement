@@ -1,0 +1,47 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 14
+VisualStudioVersion = 14.0.25420.1
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "ClusterManagement", "ClusterManagement\ClusterManagement.fsproj", "{9962E448-1AC6-4D88-85D3-5DAA1881F5D9}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{BD43071A-AC71-46F7-A4B5-72E16236810D}"
+	ProjectSection(SolutionItems) = preProject
+		.travis.yml = .travis.yml
+		appveyor.yml = appveyor.yml
+		build.cmd = build.cmd
+		build.fsx = build.fsx
+		build.sh = build.sh
+		Dockerfile = Dockerfile
+		paket.dependencies = paket.dependencies
+		paket.lock = paket.lock
+	EndProjectSection
+EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "ClusterManagement.Tests", "ClusterManagement.Tests\ClusterManagement.Tests.fsproj", "{BB31DCD3-8F53-48BA-B597-D09A7F0AB1DF}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "docs", "docs", "{A56E2498-E0CF-4E30-9B1B-9FFE7C65F6AD}"
+	ProjectSection(SolutionItems) = preProject
+		CONTRIBUTING.md = CONTRIBUTING.md
+		LICENSE.md = LICENSE.md
+		README.md = README.md
+	EndProjectSection
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{9962E448-1AC6-4D88-85D3-5DAA1881F5D9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9962E448-1AC6-4D88-85D3-5DAA1881F5D9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9962E448-1AC6-4D88-85D3-5DAA1881F5D9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9962E448-1AC6-4D88-85D3-5DAA1881F5D9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BB31DCD3-8F53-48BA-B597-D09A7F0AB1DF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BB31DCD3-8F53-48BA-B597-D09A7F0AB1DF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BB31DCD3-8F53-48BA-B597-D09A7F0AB1DF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BB31DCD3-8F53-48BA-B597-D09A7F0AB1DF}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
