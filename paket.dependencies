@@ -11,6 +11,7 @@ nuget Mono.Posix
 nuget NUnit
 nuget Unquote
 nuget FSharp.Compiler.Service
+nuget Suave
 
 github matthid/Yaaf.FSharp.Scripting src/source/Yaaf.FSharp.Scripting/YaafFSharpScripting.fs
 

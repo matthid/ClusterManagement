@@ -294,6 +294,9 @@ let handleArgs (argv:string array) =
                 // TODO: make sure to import flocker-container as well
                 raise <| NotImplementedException "not implemented"
                 0
+            | Some (ServeConfig res) ->
+                ServeConfig.startServer ()
+                0
             | _ ->
                 printfn "Please specify a subcommand."
                 printfn "%s" (parser.PrintUsage())

@@ -80,6 +80,7 @@ cm cluster init -c my-cluster
 This will create 8 machines on amazon (via docker-machine) and provision them (via 'docker-machine ssh machine sudo docker ...'):
  - Create the machines
  - Setup flocker
+ - Setup docker swarm
  - Setup consul
  - Setup vault
 
@@ -111,7 +112,7 @@ and test your software before deploying it to release.
 ```
 cm config copy --source source-cluster --dest dest-cluster
 ```
-Copy exiting configuration from one cluster to another. This way you can store a set of configuration in the repository and only need a single
+Copy existing configuration from one cluster to another. This way you can store a set of configuration in the repository and only need a single
 secret on the CI.
 
 

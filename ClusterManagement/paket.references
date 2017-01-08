@@ -4,5 +4,6 @@ FSharp.Configuration
 FSharp.Data
 Mono.Posix
 FSharp.Compiler.Service
+Suave
 
 File:YaafFSharpScripting.fs

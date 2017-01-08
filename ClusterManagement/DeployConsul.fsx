@@ -66,3 +66,11 @@ for n in d.Nodes |> Seq.sortBy (fun n -> match n.Type with Storage.NodeType.Prim
                 ip primaryMasterIp)
         res |> Proc.failOnExitCode |> ignore
         ()
+    
+let runDocker args = DockerMachine.runDockerOnNode d.ClusterName "master-01" args |> Async.RunSynchronously
+// add tokens as config
+for tok in Config.getTokens d.ClusterName d.ClusterConfig do
+    runDocker
+        (sprintf "run --net=host consul kv put yaaf/config/tokens/%s %s" tok.Name tok.Value)
+    |> Proc.failOnExitCode
+    |> ignore

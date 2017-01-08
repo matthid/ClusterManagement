@@ -266,6 +266,14 @@ type ImportArgs =
             | ImportFile _ -> "The export file to import."
             | Secret  _ -> "The secret of the cluster."
 
+type ServeConfigArgs =
+    | ConsulAddress of string
+  with
+    interface IArgParserTemplate with
+        member this.Usage = 
+            match this with
+            | ConsulAddress _ -> "The consul server to connect to."
+
 type MyArgs =
     | Version
     | [<AltCommandLine("-v")>] Verbose
@@ -278,6 +286,7 @@ type MyArgs =
     | [<CliPrefix(CliPrefix.None)>] Deploy of ParseResults<DeployArgs>
     | [<CliPrefix(CliPrefix.None)>] Export of ParseResults<ExportArgs>
     | [<CliPrefix(CliPrefix.None)>] Import of ParseResults<ImportArgs>
+    | [<CliPrefix(CliPrefix.None)>] ServeConfig of ParseResults<ServeConfigArgs>
   with
     interface IArgParserTemplate with
         member this.Usage = 
@@ -293,3 +302,4 @@ type MyArgs =
             | Deploy _ -> "Deploy Software into a cluster with the given deployment script."
             | Export _ -> "Export the current cluster."
             | Import _ -> "Import a given exported cluster."
+            | ServeConfig _ -> "Start a simple webserver which deploys a list of config-file tokens, which can be easily consumed by a bash script."

@@ -67,6 +67,7 @@
     <Compile Include="Providers.fs" />
     <Compile Include="Cluster.fs" />
     <Compile Include="ImportExport.fs" />
+    <Compile Include="ServeConfig.fs" />
     <Compile Include="Cli.fs" />
     <Compile Include="Program.fs" />
     <None Include="TestScript.fsx" />
@@ -82,6 +83,7 @@
     <EmbeddedResource Include="DeployConsul.fsx" />
     <EmbeddedResource Include="DeployVault.fsx" />
     <None Include="machine-inspect-example.json" />
+    <None Include="consul-get-sample.json" />
   </ItemGroup>
   <PropertyGroup>
     <MinimumVisualStudioVersion Condition="'$(MinimumVisualStudioVersion)' == ''">11</MinimumVisualStudioVersion>
@@ -163,12 +165,12 @@
   <Choose>
     <When Condition="$(TargetFrameworkIdentifier) == '.NETFramework' And $(TargetFrameworkVersion) == 'v4.6.1'">
       <ItemGroup>
+        <Reference Include="System.Xml.Linq">
+          <Paket>True</Paket>
+        </Reference>
         <Reference Include="FSharp.Data">
           <HintPath>..\packages\FSharp.Data\lib\net40\FSharp.Data.dll</HintPath>
           <Private>True</Private>
-          <Paket>True</Paket>
-        </Reference>
-        <Reference Include="System.Xml.Linq">
           <Paket>True</Paket>
         </Reference>
       </ItemGroup>
@@ -179,6 +181,17 @@
       <ItemGroup>
         <Reference Include="Mono.Posix">
           <HintPath>..\packages\Mono.Posix\lib\net40\Mono.Posix.dll</HintPath>
+          <Private>True</Private>
+          <Paket>True</Paket>
+        </Reference>
+      </ItemGroup>
+    </When>
+  </Choose>
+  <Choose>
+    <When Condition="$(TargetFrameworkIdentifier) == '.NETFramework' And $(TargetFrameworkVersion) == 'v4.6.1'">
+      <ItemGroup>
+        <Reference Include="Suave">
+          <HintPath>..\packages\Suave\lib\net40\Suave.dll</HintPath>
           <Private>True</Private>
           <Paket>True</Paket>
         </Reference>
