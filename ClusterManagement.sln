@@ -26,6 +26,11 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "docs", "docs", "{A56E2498-E
 		README.md = README.md
 	EndProjectSection
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "FSharpDocker", "FSharpDocker", "{78B7E425-81A9-4C2E-9DFD-66074805A49B}"
+	ProjectSection(SolutionItems) = preProject
+		FSharpDocker\Dockerfile = FSharpDocker\Dockerfile
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -43,5 +48,8 @@ Global
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{78B7E425-81A9-4C2E-9DFD-66074805A49B} = {BD43071A-AC71-46F7-A4B5-72E16236810D}
 	EndGlobalSection
 EndGlobal

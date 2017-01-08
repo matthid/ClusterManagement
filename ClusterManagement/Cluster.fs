@@ -243,27 +243,22 @@ module Cluster =
                 failwithf "Cluster is already initialized. Use force if you really want to initialize again."
 
         let masterAsWorker = ClusterConfig.getMasterAsWorker cc
-        let tokens = Config.getTokens clusterName cc
         
         if Env.isVerbose then printfn "checking config."
 
-        for n in [ "AWS_ACCESS_KEY_ID"; "AWS_ACCESS_KEY_SECRET"; "AWS_REGION"; "AWS_ZONE" ] do
-            Config.ensureConfig clusterName n cc
-        let awsRegion = (ClusterConfig.getConfig "AWS_REGION" cc).Value
+        Providers.ensureConfig clusterName cc
+
         
         if Env.isVerbose then printfn "extracting config."
         
-        let getReplacedResourceText name =
-            let resourceText = Env.getResourceText name
-            Config.replaceTokens tokens resourceText
-        
-        let replacedAgentYml = getReplacedResourceText "agent.yml"
+        let replacedAgentYml = Providers.getAgentConfig clusterName cc
         
         if Env.isVerbose then printfn "provision nodes."
         let nodeDir = StoragePath.getNodesDir clusterName
-        let nodes = Storage.getNodes nodeDir 
+        let nodes = Storage.getNodes nodeDir
+        let mutable primaryMasterIp = Unchecked.defaultof<_>
         // Create Machine and initialize flocker
-        for { Type = t; Dir = dir } in nodes do
+        for { Type = t; Dir = dir } in nodes |> Seq.sortBy (fun n -> match n.Type with | Storage.NodeType.PrimaryMaster -> 0 | Storage.NodeType.Master -> 1 | Storage.NodeType.Worker -> 2) do
             let flockerDir = StoragePath.ensureAndReturnDir (Path.Combine (dir, "etc", "flocker"))
             File.WriteAllText (Path.Combine(flockerDir, "agent.yml"), replacedAgentYml)
             
@@ -277,12 +272,29 @@ module Cluster =
             if res.ExitCode = 0 then // already exists
                 eprintfn "Machine '%s' seems to be already existing, reusing..." machine
             else
-                let! res = DockerMachine.runInteractive clusterName (sprintf "create --driver amazonec2 --amazonec2-region %s \"%s\"" awsRegion machine)
-                res |> Proc.failWithMessage "failed create new machine!" |> ignore
+                do! Providers.createMachine clusterName machine cc
                 ()
 
             Storage.quickSaveClusterWithStoredSecret clusterName
         
+            // Get IP and ensure networking
+            match t with
+            | Storage.NodeType.PrimaryMaster ->
+                do! Providers.allowInternalNetworking clusterName cc
+                let! ip = DockerMachine.getEth0Ip clusterName nodeName
+                primaryMasterIp <- ip
+            | _ when System.Object.ReferenceEquals(primaryMasterIp, null) ->
+                failwith "primary master needs to be initialized first!"
+            | _ -> ()
+ 
+            // Write '__CLUSTER_NAME__-master-01' into /etc/hosts
+            let hostname = sprintf "%s-master-01" clusterName
+            let! res = 
+                DockerMachine.run clusterName 
+                    (sprintf "ssh %s sudo bash -c \\\"if grep -q '%s' /etc/hosts; then echo master-01 reference exists; else echo '%s %s' >> /etc/hosts; fi\\\"" 
+                    machine  hostname primaryMasterIp hostname)
+            res |> Proc.failOnExitCode |> ignore
+
             // provision machine / flocker
             if Env.isVerbose then printfn "upload provision config '%s'." machine
             let! res = DockerMachine.runInteractive clusterName (sprintf "ssh %s sudo rm -rf /yaaf-provision && sudo mkdir /yaaf-provision && sudo chmod 777 /yaaf-provision" machine)

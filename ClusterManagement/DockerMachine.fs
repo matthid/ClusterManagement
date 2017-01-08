@@ -48,6 +48,18 @@ module DockerMachine =
         return res.Output.StdOut.Trim()
       }
 
+    type internal InspectJson = FSharp.Data.JsonProvider<"machine-inspect-example.json">
+    let internal parseInspectJson json =
+        let json = InspectJson.Load(new System.IO.StringReader(json))
+        json
+
+    let internal inspect cluster nodeName =
+      async {
+        let machineName = getMachineName cluster nodeName
+        let! res = run cluster (sprintf "inspect %s" machineName)
+        res |> Proc.failOnExitCode |> ignore
+        return parseInspectJson(res.Output.StdOut.Trim())
+      }
       
     let runDockerOnNode cluster nodeName args =
       async {

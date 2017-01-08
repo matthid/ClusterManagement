@@ -15,7 +15,7 @@ let masterNum = d.Nodes |> Seq.sumBy (fun n -> match n.Type with Storage.NodeTyp
 
 // Kill current swarm services
 let runDocker args = DockerMachine.runDockerOnNode d.ClusterName "master-01" args |> Async.RunSynchronously
-let res = runDocker "service ps -q"
+let res = runDocker "service ls -q"
 if res.ExitCode <> 0 then
     eprintfn "Failed (%d) to get existing services from cluster %s.\nOutput: %s\nError: %s" res.ExitCode d.ClusterName res.Output.StdOut res.Output.StdErr
 else
@@ -33,13 +33,12 @@ for n in d.Nodes |> Seq.sortBy (fun n -> match n.Type with Storage.NodeType.Prim
     if res.ExitCode <> 0 then
         eprintfn "Failed (%d) to leave swarm cluster, machine: %s.\nOutput: %s\nError: %s" res.ExitCode n.Name res.Output.StdOut res.Output.StdErr
 
-
     let ip = DockerMachine.getEth0Ip d.ClusterName n.Name |> Async.RunSynchronously
     match n.Type with
     | Storage.NodeType.PrimaryMaster ->
         // First master
         let res = 
-            runDocker (sprintf "docker swarm init --advertise-addr %s" ip)
+            runDocker (sprintf "swarm init --advertise-addr %s" ip)
             |> Proc.failOnExitCode
         
         let managerToken =

@@ -17,5 +17,5 @@ RUN cd /build && /bin/bash build.sh && cp -a /build/ClusterManagement/bin/Releas
 WORKDIR /workingDir
 ENTRYPOINT [ "mono", "--debug", "/app/ClusterManagement.exe" ]
 
-# MSYS_NO_PATHCONV=1 docker build --squash . -t matthid/clustermanagement:latest -t matthid/clustermanagement:0.1.0 && docker push matthid/clustermanagement:0.1.0 && docker push matthid/clustermanagement:latest
+# docker build --squash . -t matthid/clustermanagement:latest -t matthid/clustermanagement:0.1.0 && docker push matthid/clustermanagement:0.1.0 && docker push matthid/clustermanagement:latest
 # MSYS_NO_PATHCONV=1 docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v $PROJDIR/clustercgf:/clustercfg -v $PROJDIR:/workingdir matthid/clustermanagement

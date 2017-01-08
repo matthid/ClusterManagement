@@ -95,8 +95,6 @@ cm docker-machine -c my-cluster -- ssh my-cluster-master-01
 These commands show that you can still access low-level `docker-machine` functionality.
 
 
- --- (TO BE IMPLEMENTED) ---
-
 You can now write short deployment scripts to setup your software and use ClusterManagement to deploy it:
  
 ```
@@ -116,6 +114,8 @@ cm config copy --source source-cluster --dest dest-cluster
 Copy exiting configuration from one cluster to another. This way you can store a set of configuration in the repository and only need a single
 secret on the CI.
 
+
+ --- (TO BE IMPLEMENTED) ---
 
 ```
 cm volume clone --source source-cluster --dest dest-cluster

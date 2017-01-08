@@ -64,6 +64,7 @@
     <Compile Include="DockerMachine.fs" />
     <Compile Include="Volume.fs" />
     <Compile Include="Deploy.fs" />
+    <Compile Include="Providers.fs" />
     <Compile Include="Cluster.fs" />
     <Compile Include="ImportExport.fs" />
     <Compile Include="Cli.fs" />
@@ -80,6 +81,7 @@
     <EmbeddedResource Include="DeploySwarm.fsx" />
     <EmbeddedResource Include="DeployConsul.fsx" />
     <EmbeddedResource Include="DeployVault.fsx" />
+    <None Include="machine-inspect-example.json" />
   </ItemGroup>
   <PropertyGroup>
     <MinimumVisualStudioVersion Condition="'$(MinimumVisualStudioVersion)' == ''">11</MinimumVisualStudioVersion>
