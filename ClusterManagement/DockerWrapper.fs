@@ -8,8 +8,8 @@ module DockerImages =
     let flockerCtl = "clusterhq/uft"
     let clusterManagement = "matthid/clustermanagement"
 
+
 module DockerWrapper =
-    type private InspectJson = FSharp.Data.JsonProvider< "inspect-example.json" >
     type HostSource =
         | Dir of string
         | NamedVolume of string
@@ -32,6 +32,13 @@ module DockerWrapper =
     
     let run args = runExt Proc.RedirectOptions.Default args
     let runInteractive args = runExt Proc.RedirectOptions.Interactive args
+    
+    // otherwise compiler needs inspect-example for projects referencing this assembly :(
+    type internal InspectJson = FSharp.Data.JsonProvider< "inspect-example.json" >
+    
+    let internal getFirstInspectJson json =
+        let json = InspectJson.Load(new System.IO.StringReader(json))
+        json.[0]
 
     let ensureWorking() =
       async { 
@@ -39,6 +46,7 @@ module DockerWrapper =
             Proc.startProcess !dockerPath "version"
             |> Async.map (Proc.failOnExitCode)
             |> Async.Ignore
+        // Find our own container-id and save all binds for later mapping.
         if System.IO.File.Exists("/proc/self/cgroup") then
             let searchStr = "cpu:/docker/"
             let dockerId = 
@@ -57,8 +65,7 @@ module DockerWrapper =
                     run (sprintf "inspect %s" id) 
                     |> Async.map (Proc.failOnExitCode)
                     |> Async.map (Proc.getStdOut)
-                let json = InspectJson.Load(new System.IO.StringReader(stdOut))
-                let first = json.[0]
+                let first = getFirstInspectJson stdOut
                 let binds =
                     first.HostConfig.Binds
                     |> Seq.map (fun m -> 

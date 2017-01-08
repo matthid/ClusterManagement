@@ -90,7 +90,7 @@ let handleArgs (argv:string array) =
                         | Some n -> n
                         | None -> 1
                     let workerNodes = 
-                        match createNewRes.TryGetResult <@ ClusterCreateNewArgs.MasterNodes @> with
+                        match createNewRes.TryGetResult <@ ClusterCreateNewArgs.WorkerNodes @> with
                         | Some n -> n
                         | None -> 0
                     let secret = Storage.withDefaultPassword (createNewRes.TryGetResult <@ ClusterCreateNewArgs.Secret @>) 
@@ -105,6 +105,18 @@ let handleArgs (argv:string array) =
                     let forceInit = initRes.Contains <@ ClusterInitArgs.Force @>
                     Cluster.init cluster forceInit
                     |> Async.RunSynchronously
+
+                    0
+                | Some (ClusterArgs.Destroy _) ->
+                    let cluster = clusterRes.GetResult <@ ClusterArgs.Cluster @>
+                    Cluster.destroy cluster
+                    |> Async.RunSynchronously
+
+                    0
+                | Some (ClusterArgs.Delete deleteRes) ->
+                    let cluster = clusterRes.GetResult <@ ClusterArgs.Cluster @>
+                    let force = deleteRes.Contains <@ ClusterDeleteArgs.Force @>
+                    Cluster.delete cluster force
 
                     0
                 | _ ->
@@ -127,13 +139,78 @@ let handleArgs (argv:string array) =
                     printfn "%s" (listRes.Parser.PrintUsage())
                     1
             | Some (Volume res) ->
-                printfn "%A" res
-                0
+                match res.TryGetSubCommand() with
+                | Some (VolumeArgs.List listRes) ->
+                    let clusterName = listRes.TryGetResult <@ ListVolumeArgs.Cluster @>
+                    let clusters =
+                        match clusterName with
+                        | Some name -> [ name ]
+                        | None -> 
+                            ClusterInfo.getClusters() 
+                            |> Seq.filter (fun c -> c.SecretAvailable && c.IsInitialized.IsSome && c.IsInitialized.Value)
+                            |> Seq.map (fun c -> c.Name)
+                            |> Seq.toList
+                    let formatPrint dataset name size cluster =
+                        printfn "%20s | %20s | %7s | %10s | %20s" dataset name size cluster
+                    let formatPrintT dataset name size cluster =
+                        formatPrint dataset name size cluster
+                    formatPrint "DATASET" "NAME" "SIZE" "STATUS" "CLUSTER"
+                    for c in clusters do
+                        Storage.openClusterWithStoredSecret c
+                        let volumes =
+                            Volume.list c
+                            |> Async.RunSynchronously
+                        for vol in volumes do
+                            formatPrintT vol.Dataset vol.Metadata vol.Size vol.Status c
+                        Storage.closeClusterWithStoredSecret c
+                    0
+                | Some (VolumeArgs.Create createArgs) ->
+                    let clusterName = createArgs.GetResult <@ VolumeCreateArgs.Cluster @>
+                    let name = createArgs.GetResult <@ VolumeCreateArgs.Name @>
+                    let size =
+                        match createArgs.TryGetResult <@ VolumeCreateArgs.Size @> with
+                        | Some s -> s
+                        | None -> 1024L * 1024L * 1024L
+                    
+                    Volume.create clusterName name size
+                    |> Async.RunSynchronously
+
+                    0
+                | Some (VolumeArgs.Clone _) ->
+                    printfn "Not implemented."
+                    1
+                | Some (VolumeArgs.Delete deleteArgs) ->
+                    let clusterName = deleteArgs.GetResult <@ VolumeDeleteArgs.Cluster @>
+                    let name = deleteArgs.GetResult <@ VolumeDeleteArgs.Name @>
+                    
+                    Volume.destroy clusterName name
+                    |> Async.RunSynchronously
+
+                    0
+                | None ->
+                    printfn "Please specify a subcommand."
+                    printfn "%s" (res.Parser.PrintUsage())
+                    1
+            | Some (DockerMachine res) ->
+                match res.TryGetResult <@ DockerMachineArgs.Cluster @> with
+                | Some (name) ->
+                    Storage.openClusterWithStoredSecret name
+                    let res =
+                        DockerMachine.runInteractive name (Proc.argvToCommandLine restArgs)
+                        |> Async.RunSynchronously
+                    Storage.closeClusterWithStoredSecret name
+                    0
+                | None ->
+                    printfn "Please specify a cluster to run this command for."
+                    printfn "%s" (res.Parser.PrintUsage())
+                    1
+                    
             | Some (Config configRes) ->
-                let clusterName = configRes.GetResult <@ ConfigArgs.Cluster @>
                 match configRes.TryGetSubCommand() with
                 | Some (ConfigArgs.Get getArgs) ->
                     let name = getArgs.GetResult <@ ConfigGetArgs.Key @>
+                    let clusterName = getArgs.GetResult <@ ConfigGetArgs.Cluster @>
+                
                     Storage.openClusterWithStoredSecret clusterName
                     let c = ClusterConfig.readClusterConfig clusterName
                     let res = ClusterConfig.getConfig name c
@@ -147,11 +224,51 @@ let handleArgs (argv:string array) =
                 | Some (ConfigArgs.Set setArgs) ->
                     let name = setArgs.GetResult <@ ConfigSetArgs.Key @>
                     let value = setArgs.GetResult <@ ConfigSetArgs.Value @>
+                    let clusterName = setArgs.GetResult <@ ConfigSetArgs.Cluster @>
+                
                     Storage.openClusterWithStoredSecret clusterName
-                    ClusterConfig.readClusterConfig clusterName
-                    |> ClusterConfig.setConfig name value
-                    |> ClusterConfig.writeClusterConfig clusterName
+                    Config.set clusterName name value
                     Storage.closeClusterWithStoredSecret clusterName
+                    0
+                | Some (ConfigArgs.Copy copyArgs) ->
+                    let source = copyArgs.GetResult <@ ConfigCopyArgs.Source @>
+                    let dest = copyArgs.GetResult <@ ConfigCopyArgs.Dest @>
+                    
+                    Storage.openClusterWithStoredSecret source
+                    Storage.openClusterWithStoredSecret dest
+
+                    Config.cloneConfig source dest
+                    
+                    Storage.closeClusterWithStoredSecret source
+                    Storage.closeClusterWithStoredSecret dest
+
+                    0
+                | Some (ConfigArgs.List listArgs) ->
+                    let clusterName = listArgs.TryGetResult <@ ListConfigArgs.Cluster @>
+                    let includeValues = listArgs.Contains <@ ListConfigArgs.IncludeValues @>
+                    let clusters =
+                        match clusterName with
+                        | Some name -> [ name ]
+                        | None -> 
+                            ClusterInfo.getClusters() 
+                            |> Seq.filter (fun c -> c.SecretAvailable)
+                            |> Seq.map (fun c -> c.Name)
+                            |> Seq.toList
+                    let formatPrint key value cluster =
+                        if includeValues then
+                            printfn "%25s | %25s | %20s" key value cluster
+                        else
+                            printfn "%25s | %20s" key cluster
+                    let formatPrintT key value cluster =
+                        formatPrint key value cluster
+                    formatPrint "KEY" "VALUE" "CLUSTER"
+                    for c in clusters do
+                        Storage.openClusterWithStoredSecret c
+                        let cc = ClusterConfig.readClusterConfig c
+                        let toks = ClusterConfig.getTokens cc
+                        for tok in toks do
+                            formatPrintT tok.Name tok.Value c
+                        Storage.closeClusterWithStoredSecret c
                     0
                 | _ ->
                     printfn "Please specify a subcommand."
@@ -164,19 +281,19 @@ let handleArgs (argv:string array) =
                 Cluster.provision clusterName nodeName nodeType
                 |> Async.RunSynchronously
                 0
-            | Some (DockerMachine res) ->
-                match res.TryGetResult <@ DockerMachineArgs.Cluster @> with
-                | Some (name) ->
-                    Storage.openClusterWithStoredSecret name
-                    let res =
-                        DockerMachine.runInteractive name (Proc.argvToCommandLine restArgs)
-                        |> Async.RunSynchronously
-                    Storage.openClusterWithStoredSecret name
-                    0
-                | None ->
-                    printfn "Please specify a cluster to run this command for."
-                    printfn "%s" (res.Parser.PrintUsage())
-                    1
+            | Some (Deploy res) ->
+                let script = res.GetResult <@ DeployArgs.Script @>
+                let clusterName = res.GetResult <@ DeployArgs.Cluster @>
+                Deploy.deploy clusterName script restArgs
+                0
+            | Some (Export res) ->
+                // TODO: make sure to export flocker-container as well
+                raise <| NotImplementedException "not implemented"
+                0
+            | Some (Import res) ->
+                // TODO: make sure to import flocker-container as well
+                raise <| NotImplementedException "not implemented"
+                0
             | _ ->
                 printfn "Please specify a subcommand."
                 printfn "%s" (parser.PrintUsage())

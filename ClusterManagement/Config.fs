@@ -19,17 +19,26 @@ module Config =
       File.WriteAllText(f, replaceTokens tokens fileText)
     
     let set clusterName key value =
-        Storage.openClusterWithStoredSecret clusterName
-        let c = ClusterConfig.readClusterConfig clusterName
-
-        ClusterConfig.writeClusterConfig clusterName c
-        Storage.closeClusterWithStoredSecret clusterName
+        //Storage.openClusterWithStoredSecret clusterName
+        ClusterConfig.readClusterConfig clusterName
+        |> ClusterConfig.setConfig key value
+        |> ClusterConfig.writeClusterConfig clusterName
+        Storage.quickSaveClusterWithStoredSecret clusterName
     
     let ensureConfig clusterName n cc =
         match ClusterConfig.getConfig n cc with
         | None | Some "" | Some null ->
             failwithf "Config '%s' is required to initialize the cluster. Use 'ClusterManagement config --cluster \"%s\" set %s <my-value>' to set a value." n clusterName n
         | _ -> ()
+
+    let cloneConfig sourceCluster destCluster =
+
+        let dest = ClusterConfig.readClusterConfig destCluster
+        ClusterConfig.readClusterConfig sourceCluster
+        |> ClusterConfig.getTokens
+        |> Seq.fold (fun state tok -> ClusterConfig.setConfig tok.Name tok.Value state) dest
+        |> ClusterConfig.writeClusterConfig destCluster
+
 (*
 open FSharp.Configuration
 

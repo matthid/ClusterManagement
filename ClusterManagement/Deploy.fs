@@ -33,17 +33,7 @@ module Deploy =
             failwith "this script must be run with 'ClusterManagement.exe deploy --script script.fsx'"
         i
 
-    let deploy cluster scriptFile args =
-      //async {
-        let session = session.Force()
-        let name = System.IO.Path.GetFileName scriptFile
-        let targetPath = System.IO.Path.Combine(assemblyDir, name)
-        let fullScriptPath = System.IO.Path.GetFullPath scriptFile
-        if targetPath <> fullScriptPath then
-            System.IO.File.Copy(fullScriptPath, targetPath, true)
-
-        Storage.openClusterWithStoredSecret cluster
-        
+    let internal getInfoInternal cluster args =
         let cc = ClusterConfig.readClusterConfig cluster
         let gc = GlobalConfig.readConfig()
         let nodeDir = StoragePath.getNodesDir cluster
@@ -57,11 +47,25 @@ module Deploy =
                   MachineName = machine
                   Type = n.Type })
             |> Seq.toList
+        { ClusterName = cluster; ClusterConfig = cc; GlobalConfig = gc; Args = args; Nodes = nodes }
 
-        info <- { ClusterName = cluster; ClusterConfig = cc; GlobalConfig = gc; Args = args; Nodes = nodes }
+    let deploy cluster scriptFile args =
+      //async {
+        let session = session.Force()
+        let name = System.IO.Path.GetFileName scriptFile
+        let targetPath = System.IO.Path.Combine(assemblyDir, name)
+        let fullScriptPath = System.IO.Path.GetFullPath scriptFile
+        if targetPath <> fullScriptPath then
+            System.IO.File.Copy(fullScriptPath, targetPath, true)
+
+        Storage.openClusterWithStoredSecret cluster
+
+        info <- getInfoInternal cluster args
 
         session.Load (targetPath)
     
+        info <- Unchecked.defaultof<_>
+
         Storage.closeClusterWithStoredSecret cluster
       //}
     

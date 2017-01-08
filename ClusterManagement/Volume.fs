@@ -59,9 +59,14 @@ module Volume =
         res |> Proc.failOnExitCode |> ignore
         return parseList res.Output.StdOut
       } 
-
+      
+    let destroy cluster datasetId =
+      async {
+        let! res = flockerctl cluster "master-01" (sprintf "destroy -d %s" datasetId)
+        res |> Proc.failOnExitCode |> ignore
+      } 
     
-    let create cluster name size =
+    let create cluster name (size:int64) =
       async {
         // flockerctl check if exists
         // docker run flockerctl volume create

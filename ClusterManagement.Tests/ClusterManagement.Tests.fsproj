@@ -68,6 +68,8 @@
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="System.Numerics" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\ClusterManagement\ClusterManagement.fsproj">
       <Name>ClusterManagement</Name>
       <Project>{9962e448-1ac6-4d88-85d3-5daa1881f5d9}</Project>

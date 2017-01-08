@@ -65,6 +65,7 @@
     <Compile Include="Volume.fs" />
     <Compile Include="Deploy.fs" />
     <Compile Include="Cluster.fs" />
+    <Compile Include="ImportExport.fs" />
     <Compile Include="Cli.fs" />
     <Compile Include="Program.fs" />
     <None Include="TestScript.fsx" />
@@ -76,6 +77,7 @@
     <None Include="inspect-example.json" />
     <EmbeddedResource Include="aws_config" />
     <EmbeddedResource Include="aws_credentials" />
+    <EmbeddedResource Include="DeploySwarm.fsx" />
     <EmbeddedResource Include="DeployConsul.fsx" />
     <EmbeddedResource Include="DeployVault.fsx" />
   </ItemGroup>

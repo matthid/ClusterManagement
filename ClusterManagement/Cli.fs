@@ -42,20 +42,12 @@ type ClusterDestroyArgs =
             match this with
             | Dummy _ -> "Dummy command line."
 type ClusterDeleteArgs =
-    | Dummy of string
+    | [<AltCommandLine("-f")>] Force
   with
     interface IArgParserTemplate with
         member this.Usage = 
             match this with
-            | Dummy _ -> "Dummy command line."
-
-type ClusterDeployArgs =
-    | Dummy of string
-  with
-    interface IArgParserTemplate with
-        member this.Usage = 
-            match this with
-            | Dummy _ -> "Dummy command line."
+            | Force _ -> "Force delete the cluster locally, even when it already has been initialized."
 
 type ClusterListArgs =
     | Dummy of string
@@ -67,13 +59,12 @@ type ClusterListArgs =
 
 type ClusterArgs =
     | [<AltCommandLine("-c")>] [<Inherit>] [<Mandatory>] Cluster of string
+    | [<CliPrefix(CliPrefix.None)>] Encrypt of ParseResults<ClusterDecryptEncryptArgs>
+    | [<CliPrefix(CliPrefix.None)>] Decrypt of ParseResults<ClusterDecryptEncryptArgs>
     | [<CliPrefix(CliPrefix.None)>] CreateNew of ParseResults<ClusterCreateNewArgs>
     | [<CliPrefix(CliPrefix.None)>] Init of ParseResults<ClusterInitArgs>
     | [<CliPrefix(CliPrefix.None)>] Destroy of ParseResults<ClusterDestroyArgs>
     | [<CliPrefix(CliPrefix.None)>] Delete of ParseResults<ClusterDeleteArgs>
-    | [<CliPrefix(CliPrefix.None)>] Deploy of ParseResults<ClusterDeployArgs>
-    | [<CliPrefix(CliPrefix.None)>] Decrypt of ParseResults<ClusterDecryptEncryptArgs>
-    | [<CliPrefix(CliPrefix.None)>] Encrypt of ParseResults<ClusterDecryptEncryptArgs>
   with
     interface IArgParserTemplate with
         member this.Usage = 
@@ -83,7 +74,6 @@ type ClusterArgs =
             | Init _ -> "Setup and provision machines for the cluster."
             | Destroy _ -> "Delete ressources associated with the cluster (volumes and machines)."
             | Delete _ -> "Delete the cluster association and config locally (destroy the cluster first, otherwise you need to cleanup manually)."
-            | Deploy _ -> "Deploy an application to the cluster."
             | Decrypt _ -> "Decrypt an existing cluster (store the secret locally for future operations)."
             | Encrypt _ -> "Encrypt an existing cluster (change the secret or create one)."
 
@@ -96,20 +86,20 @@ type ListVolumeArgs =
             | Cluster _ -> "The name of the cluster for filtering volumes. If none is given we show the volumes for all clusters we have access to."
 
 type VolumeCreateArgs =
-    | [<AltCommandLine("-c")>] Cluster of string
+    | [<Mandatory>] [<AltCommandLine("-c")>] Cluster of string
     | Size of int64
-    | Name of string
+    | [<Mandatory>] [<AltCommandLine("-n")>] Name of string
   with
     interface IArgParserTemplate with
         member this.Usage = 
             match this with
             | Cluster _ -> "The name of the cluster to create the volume for."
-            | Size _ -> "The size of the new Volume."
+            | Size _ -> "The size of the new Volume in bytes. Defaults to 1G (1024 * 1024 * 1024)"
             | Name _ -> "The name of the new Volume."
 
 type VolumeDeleteArgs =
     | [<AltCommandLine("-c")>] Cluster of string
-    | Name of string
+    | [<Mandatory>] [<AltCommandLine("-n")>] Name of string
   with
     interface IArgParserTemplate with
         member this.Usage = 
@@ -143,35 +133,61 @@ type VolumeArgs =
             | Delete _ -> "Delete a volume."
 
 type ConfigSetArgs =
+    | [<AltCommandLine("-c")>] [<Mandatory>] Cluster of string
     | Key of string
     | Value of string
   with
     interface IArgParserTemplate with
         member this.Usage = 
             match this with
+            | Cluster _ -> "Change configuration of an existing cluster."
             | Key _ -> "The key of the config to create."
             | Value _ -> "The value of the config to create."
             
 type ConfigGetArgs =
+    | [<AltCommandLine("-c")>] [<Mandatory>] Cluster of string
     | Key of string
   with
     interface IArgParserTemplate with
         member this.Usage = 
             match this with
+            | Cluster _ -> "Change configuration of an existing cluster."
             | Key _ -> "The key of the config to get."
 
-type ConfigArgs =
-    | [<AltCommandLine("-c")>] [<Inherit>] Cluster of string
-    | [<CliPrefix(CliPrefix.None)>] Set of ParseResults<ConfigSetArgs>
-    | [<CliPrefix(CliPrefix.None)>] Get of ParseResults<ConfigGetArgs>
+type ListConfigArgs =
+    | [<AltCommandLine("-c")>] Cluster of string
+    | [<AltCommandLine("-v")>] IncludeValues
   with
     interface IArgParserTemplate with
         member this.Usage = 
             match this with
-            | Cluster _ -> "Change configuration of an existing cluster."
+            | Cluster _ -> "The name of the cluster for filtering config values. If none is given we show the configurations for all clusters we have access to."
+            | IncludeValues _ -> "Print values as well."
+
+type ConfigCopyArgs =
+    | [<Mandatory>] [<AltCommandLine("-s")>] Source of string
+    | [<Mandatory>] [<AltCommandLine("-d")>] Dest of string
+  with
+    interface IArgParserTemplate with
+        member this.Usage = 
+            match this with
+            | Source _ -> "The name of the source cluster to copy configurations from."
+            | Dest _ -> "The name of the destination cluster to copy the configuration into."
+             
+type ConfigArgs =
+    | [<CliPrefix(CliPrefix.None)>] Set of ParseResults<ConfigSetArgs>
+    | [<CliPrefix(CliPrefix.None)>] Get of ParseResults<ConfigGetArgs>
+    | [<CliPrefix(CliPrefix.None)>] Copy of ParseResults<ConfigCopyArgs>
+    | [<CliPrefix(CliPrefix.None)>] List of ParseResults<ListConfigArgs>
+  with
+    interface IArgParserTemplate with
+        member this.Usage = 
+            match this with
             | Set _ -> "Set a new configuration key."
             | Get _ -> "Get a configuration value by key."
-            
+            | Copy _ -> "Copy configuration from one cluster to another."
+            | List _ -> "List all configs, optionally only show configs of a specific cluster."
+
 type DockerMachineArgs =
     | [<AltCommandLine("-c")>] Cluster of string
     | [<AltCommandLine("--")>] Rest of string list
@@ -191,7 +207,7 @@ type ListClusterArgs =
             | Rest _ -> "Dummy for future options"
 
 type ListArgs =
-    | [<CliPrefix(CliPrefix.None)>] Cluster of ParseResults<ClusterArgs>
+    | [<CliPrefix(CliPrefix.None)>] Cluster of ParseResults<ListClusterArgs>
   with
     interface IArgParserTemplate with
         member this.Usage = 
@@ -202,7 +218,7 @@ type ListArgs =
 
 type ProvisionArgs =
     | [<Mandatory>] NodeName of string
-    | [<Mandatory>] Cluster of string
+    | [<AltCommandLine("-c")>] [<Mandatory>] Cluster of string
     | [<Mandatory>] NodeType of NodeType
   with
     interface IArgParserTemplate with
@@ -213,7 +229,7 @@ type ProvisionArgs =
             | NodeType _ -> "The type of the node. Default: Worker"
 
 type DeployArgs =
-    | [<Mandatory>] Cluster of string
+    | [<AltCommandLine("-c")>] [<Mandatory>] Cluster of string
     | [<Mandatory>] Script of string
     | [<AltCommandLine("--")>] Rest of string list
   with
@@ -223,6 +239,32 @@ type DeployArgs =
             | Script  _ -> "The deployment script for the software."
             | Cluster _ -> "The name of the current cluster."
             | Rest _ -> "The arguments for the script."
+
+type ExportArgs =
+    | [<AltCommandLine("-c")>] [<Mandatory>] Cluster of string
+    | IncludeVolumeContents
+    | IncludeVolumeConfiguration
+    | TargetFile of string
+    | [<AltCommandLine("-p")>] Secret
+  with
+    interface IArgParserTemplate with
+        member this.Usage = 
+            match this with
+            | Cluster _ -> "The name of the current cluster."
+            | IncludeVolumeContents  _ -> "Should the export contain the volume data?"
+            | IncludeVolumeConfiguration  _ -> "Should the export contain the volume configuration?"
+            | TargetFile  _ -> "The target file to export the data into. Note that the file may become huge when all volume data is exported!"
+            | Secret _ -> "The file will be encrypted with the given secret."
+
+type ImportArgs =
+    | ImportFile of string
+    | Secret of string
+  with
+    interface IArgParserTemplate with
+        member this.Usage = 
+            match this with
+            | ImportFile _ -> "The export file to import."
+            | Secret  _ -> "The secret of the cluster."
 
 type MyArgs =
     | Version
@@ -234,6 +276,8 @@ type MyArgs =
     | [<CliPrefix(CliPrefix.None)>] Config of ParseResults<ConfigArgs>
     | [<CliPrefix(CliPrefix.None)>] Provision of ParseResults<ProvisionArgs>
     | [<CliPrefix(CliPrefix.None)>] Deploy of ParseResults<DeployArgs>
+    | [<CliPrefix(CliPrefix.None)>] Export of ParseResults<ExportArgs>
+    | [<CliPrefix(CliPrefix.None)>] Import of ParseResults<ImportArgs>
   with
     interface IArgParserTemplate with
         member this.Usage = 
@@ -247,3 +291,5 @@ type MyArgs =
             | DockerMachine _ -> "Run docker-machine on a given cluster."
             | Provision _ -> "Provision machines on the cluster. You normally don't need to execute these commands manually."
             | Deploy _ -> "Deploy Software into a cluster with the given deployment script."
+            | Export _ -> "Export the current cluster."
+            | Import _ -> "Import a given exported cluster."

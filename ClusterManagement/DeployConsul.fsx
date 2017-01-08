@@ -23,7 +23,7 @@ for n in d.Nodes |> Seq.sortBy (fun n -> match n.Type with Storage.NodeType.Prim
         | Storage.NodeType.Worker -> false
     if isMaster then
         // CM docker-machine -c <cluster> -- ssh blub-master-01 ifconfig -> get docker0 ip
-        Volume.create d.ClusterName volName (1024 * 1024 * 1024) // 1 GB 
+        Volume.create d.ClusterName volName (1024L * 1024L * 1024L) // 1 GB 
         |> Async.RunSynchronously
         ()
 
@@ -39,7 +39,7 @@ for n in d.Nodes |> Seq.sortBy (fun n -> match n.Type with Storage.NodeType.Prim
             eprintfn "Failed (%d) to remove container %s.\nOutput: %s\nError: %s" res.ExitCode service res.Output.StdOut res.Output.StdErr
             
 
-    let ip = DockerMachine.getDockerIp d.ClusterName n.Name |> Async.RunSynchronously
+    let ip = DockerMachine.getEth0Ip d.ClusterName n.Name |> Async.RunSynchronously
     match n.Type with
     | Storage.NodeType.PrimaryMaster ->
         // First master -> docker run -d -v master-NUM-consol:/consul/data --net=host consul agent -server -advertise=<docker0 ip> -bootstrap-expect=master_num

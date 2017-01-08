@@ -113,32 +113,41 @@
                 "WorkDir": "/var/lib/docker/overlay2/6e5e9dbf29826c3316fdaa86b58b6ed678042163a3c54be3fd3dfb3ad1fde32d/work"
             }
         },
-        "Mounts": [
-            {
-                "Type": "bind",
-                "Source": "/var/run/docker.sock",
-                "Destination": "/var/run/docker.sock",
-                "Mode": "",
-                "RW": true,
-                "Propagation": ""
-            },
-            {
-                "Type": "bind",
-                "Source": "/C/PROJ/Yaaf-Backend/clustercgf",
-                "Destination": "/clustercfg",
-                "Mode": "",
-                "RW": true,
-                "Propagation": ""
-            },
-            {
-                "Type": "bind",
-                "Source": "/C/PROJ/Yaaf-Backend",
-                "Destination": "/workdir",
-                "Mode": "",
-                "RW": true,
-                "Propagation": ""
-            }
-        ],
+      "Mounts": [
+        {
+          "Type": "bind",
+          "Source": "/var/run/docker.sock",
+          "Destination": "/var/run/docker.sock",
+          "Mode": "",
+          "RW": true,
+          "Propagation": ""
+        },
+        {
+          "Type": "bind",
+          "Source": "/C/PROJ/Yaaf-Backend/clustercgf",
+          "Destination": "/clustercfg",
+          "Mode": "",
+          "RW": true,
+          "Propagation": ""
+        },
+        {
+          "Type": "bind",
+          "Source": "/C/PROJ/Yaaf-Backend",
+          "Destination": "/workdir",
+          "Mode": "",
+          "RW": true,
+          "Propagation": ""
+        },
+        {
+          "Name": "blub-master-01-consul",
+          "Source": "/flocker/4bd4f27f-65dd-435b-aaa9-2bdf28f6f3d8",
+          "Destination": "/consul/data",
+          "Driver": "flocker",
+          "Mode": "",
+          "RW": true,
+          "Propagation": "rprivate"
+        }
+      ],
         "Config": {
             "Hostname": "5d0f753b8256",
             "Domainname": "",

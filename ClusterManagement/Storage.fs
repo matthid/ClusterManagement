@@ -131,19 +131,24 @@ module ClusterConfig =
     type MyClusterConfig =
         private { ClusterConfig : ClusterConfig }
         
-    let readClusterConfig name =
+    let private readClusterConfigI allowInitial name =
         let c = getClusterConfigFile name
 
         let cc = ClusterConfig()
         //cc.config.Clear()
         if File.Exists c then
             cc.Load c
+        elif not allowInitial then
+            failwith "Cluster needs to be opened/created first"
         
         { ClusterConfig = cc }
+           
+    let readClusterConfig name =
+        readClusterConfigI false name
 
     let setInitialConfig name masterAsWorker =
         let c = getClusterConfigFile name
-        let { ClusterConfig = cc } = readClusterConfig name
+        let { ClusterConfig = cc } = readClusterConfigI true name
         cc.globalConfig.masterAsWorker <- masterAsWorker
         cc.Save(c)
         
@@ -151,10 +156,10 @@ module ClusterConfig =
     let getMasterAsWorker { ClusterConfig = cc } =
         cc.globalConfig.masterAsWorker
         
-    let setClusterInitialized name =
+    let setClusterInitialized name isInit =
         let c = getClusterConfigFile name
         let { ClusterConfig = cc } = readClusterConfig name
-        cc.globalConfig.isInitialized <- true
+        cc.globalConfig.isInitialized <- isInit
         cc.Save(c)
         
     let getIsInitialized { ClusterConfig = cc } =
@@ -273,6 +278,16 @@ module Storage =
     let quickSaveClusterWithStoredSecret name =
         closeClusterWithStoredSecret name
         openClusterWithStoredSecret name
+    
+    let deleteCluster cluster =
+        let dir = getClusterDirectory cluster
+        let file = getClusterFile cluster
+        if Directory.Exists dir then
+            Directory.Delete(dir, true)
+        
+        if File.Exists file then
+            File.Delete (file)
+        
 
 module ClusterInfo =
     open StoragePath

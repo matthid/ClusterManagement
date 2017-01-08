@@ -277,7 +277,7 @@ module Cluster =
             if res.ExitCode = 0 then // already exists
                 eprintfn "Machine '%s' seems to be already existing, reusing..." machine
             else
-                let! res = DockerMachine.runInteractive clusterName (sprintf "--debug create --driver amazonec2 --amazonec2-region %s \"%s\"" awsRegion machine)
+                let! res = DockerMachine.runInteractive clusterName (sprintf "create --driver amazonec2 --amazonec2-region %s \"%s\"" awsRegion machine)
                 res |> Proc.failWithMessage "failed create new machine!" |> ignore
                 ()
 
@@ -306,17 +306,75 @@ module Cluster =
                     machine DockerImages.clusterManagement (if Env.isVerbose then "-v" else "") clusterName nodeName nodeType)
             res |> Proc.failWithMessage "failed to provision machine." |> ignore
 
-        ClusterConfig.setClusterInitialized clusterName
+        ClusterConfig.setClusterInitialized clusterName true
         Storage.closeClusterWithStoredSecret clusterName
 
         // From an high level perspective the above is already a fully functionaly cluster, as long as no configuration is required.
         // therefore we should make sure to deploy consul and vault only with high-level functionality available to other software as well
         // like `clustermanagement docker-machine ssh`
+        
+        // Deploy Swarm
+        Deploy.deployIntegrated clusterName "DeploySwarm.fsx"
 
-        // Deploy 
+        // Deploy Consul
         Deploy.deployIntegrated clusterName "DeployConsul.fsx"
 
         // Deploy Vault
         Deploy.deployIntegrated clusterName "DeployVault.fsx"
       }
 
+    let destroy clusterName =
+      async {
+        Storage.openClusterWithStoredSecret clusterName
+        let cc = ClusterConfig.readClusterConfig clusterName
+        let isInit = ClusterConfig.getIsInitialized cc
+        if not isInit then
+            eprintfn "WARN: Cluster is not initialized. No-op."
+        else
+            // Clear/Delete volumes -> Sets them to status "deleting"
+            let! datasets = Volume.list clusterName
+            for d in datasets do
+                do! Volume.destroy clusterName d.Dataset
+            
+            // Kill all containers which block deletion of volumes
+            let d = Deploy.getInfoInternal clusterName [||]
+            for n in d.Nodes do
+                let! containers = DockerMachine.runDockerPs clusterName n.Name
+                for container in containers do
+                    let! inspect = DockerMachine.runDockerInspect clusterName n.Name container.ContainerId
+                    if inspect.Mounts
+                       |> Seq.exists (fun m -> m.Driver = Some "flocker") then
+                        do! DockerMachine.runDockerKill clusterName n.Name container.ContainerId
+                        do! DockerMachine.runDockerRemove clusterName n.Name container.ContainerId
+            
+            // Give flocker some time to act and delete its nodes
+            let mutable containsItems = true
+            while containsItems do
+                let! items = Volume.list clusterName
+                containsItems <- not items.IsEmpty
+                if containsItems then
+                    eprintfn "Give flocker some time to cleanup..."
+                    do! Async.Sleep 500
+
+            // Clear/Delete docker-machines
+            for n in d.Nodes do
+                let! res = DockerMachine.run clusterName (sprintf "rm -y \"%s\"" n.MachineName)
+                res |> Proc.failWithMessage "failed to delete a machine!" |> ignore
+            ClusterConfig.setClusterInitialized clusterName false
+
+        Storage.closeClusterWithStoredSecret clusterName
+        ()
+      }
+
+    let delete clusterName force =
+        Storage.openClusterWithStoredSecret clusterName
+        let cc = ClusterConfig.readClusterConfig clusterName
+        let isInit = ClusterConfig.getIsInitialized cc
+        Storage.closeClusterWithStoredSecret clusterName
+        if isInit then
+            if force then
+                eprintfn "WARN: Deleting an initialized cluster!"
+            else
+                failwithf "This cluster is already initialized. Use --force to delete it anyway."
+        
+        Storage.deleteCluster clusterName
