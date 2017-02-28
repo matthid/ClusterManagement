@@ -327,9 +327,12 @@ module Cluster =
         
         // Deploy Swarm
         Deploy.deployIntegrated clusterName "DeploySwarm.fsx"
-
+        
         // Deploy Consul
         Deploy.deployIntegrated clusterName "DeployConsul.fsx"
+
+        // Deploy ClusterManagement
+        Deploy.deployIntegrated clusterName "DeployClusterManagement.fsx"
 
         // Deploy Vault
         Deploy.deployIntegrated clusterName "DeployVault.fsx"

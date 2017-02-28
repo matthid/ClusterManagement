@@ -81,6 +81,7 @@
     <EmbeddedResource Include="aws_credentials" />
     <EmbeddedResource Include="DeploySwarm.fsx" />
     <EmbeddedResource Include="DeployConsul.fsx" />
+    <EmbeddedResource Include="DeployClusterManagement.fsx" />
     <EmbeddedResource Include="DeployVault.fsx" />
     <None Include="machine-inspect-example.json" />
     <None Include="consul-get-sample.json" />

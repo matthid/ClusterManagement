@@ -27,13 +27,15 @@ module StoragePath =
     let storagePath =
         let env = Environment.GetEnvironmentVariable "CM_STORAGE"
         ref (if String.IsNullOrEmpty env then ".cm" else env)
-    let tempStoragePath =
+    let private tempStoragePath =
         let env = Environment.GetEnvironmentVariable "CM_TEMP_STORAGE"
         ref (if String.IsNullOrEmpty env then ".cm-temp" else env)
     let ensureAndReturnDir p =
         if Directory.Exists p |> not then
             Directory.CreateDirectory p |> ignore
         p
+
+    let getTempStoragePath () = !tempStoragePath |> ensureAndReturnDir
     
     let getClusterDirectory name =
         Path.Combine (!tempStoragePath, name)
@@ -66,7 +68,7 @@ module StoragePath =
     let getClusterFile name =
         Path.Combine (!storagePath |> ensureAndReturnDir, sprintf "%s%s" name extension)
 
-    let configPath () = Path.Combine (!tempStoragePath, configStorage)
+    let configPath () = Path.Combine (getTempStoragePath (), configStorage)
 
 module GlobalConfig =
     open StoragePath
@@ -300,7 +302,7 @@ module ClusterInfo =
             { Name = Path.GetFileNameWithoutExtension f; Path = f })
         
     let getOpenedClusters () =
-        Directory.EnumerateDirectories(!tempStoragePath |> ensureAndReturnDir)
+        Directory.EnumerateDirectories(getTempStoragePath())
         |> Seq.map (fun f ->
             { Name = Path.GetFileName f; Path = f })
     type ClusterInfo =
