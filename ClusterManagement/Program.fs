@@ -10,7 +10,7 @@ open ClusterManagement
 
 let initTool toolName (field:string ref) =
   async {
-    let! toolPath = Which.getTooPath toolName
+    let! toolPath = Which.getToolPath toolName
     field := toolPath
   }
     
@@ -56,7 +56,7 @@ let handleArgs (argv:string array) =
             printfn "UserInterface: %b" Env.userInterface
             printfn "IsConsoleSizeZero: %b" Env.isConsoleSizeZero
             printfn "stdInTTy: %b" Env.stdInTTy
-            let stty = Which.getTooPath "stty" |> Async.RunSynchronously
+            let stty = Which.getToolPath "stty" |> Async.RunSynchronously
             let res = Proc.startProcess stty "-a" |> Async.RunSynchronously
             printfn "stty -a: %s" res.Output.StdOut 
         

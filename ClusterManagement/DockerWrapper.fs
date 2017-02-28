@@ -48,9 +48,10 @@ module DockerWrapper =
             |> Async.Ignore
         // Find our own container-id and save all binds for later mapping.
         if System.IO.File.Exists("/proc/self/cgroup") then
-            let searchStr = "cpu:/docker/"
+            let searchStr = ":/docker/"
+            let cgroupString = System.IO.File.ReadAllLines("/proc/self/cgroup")
             let dockerId = 
-                System.IO.File.ReadAllLines("/proc/self/cgroup")
+                cgroupString
                 |> Seq.choose (fun l -> 
                     let i = l.IndexOf(searchStr)
                     if i >= 0 then
@@ -76,7 +77,11 @@ module DockerWrapper =
                         { HostSource = source; ContainerDir = container })
                     |> Seq.toList
                 baseMounts := binds
-            | None -> ()
+            | None ->
+              if Env.isVerbose then
+                printfn "Docker-Id not found in /proc/self/cgroup: '%s'" (System.String.Join(System.Environment.NewLine, cgroupString))
+        else
+          if Env.isVerbose && Env.isLinux then printfn "Could not find /proc/self/cgroup"
       }
 
     // outer container /c/test/dir/currentDir:/currentDir
