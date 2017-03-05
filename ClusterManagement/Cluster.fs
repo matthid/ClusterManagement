@@ -353,28 +353,47 @@ module Cluster =
             
             // Kill all containers which block deletion of volumes
             let d = Deploy.getInfoInternal clusterName [||]
-            for n in d.Nodes do
-                let! containers = DockerMachine.runDockerPs clusterName n.Name
-                for container in containers do
-                    let! inspect = DockerMachine.runDockerInspect clusterName n.Name container.ContainerId
-                    if inspect.Mounts
-                       |> Seq.exists (fun m -> m.Driver = Some "flocker") then
-                        match inspect.Config.Labels.ComDockerSwarmServiceName with
-                        | Some service ->
-                            do! DockerMachine.runDockerOnNode clusterName n.Name (sprintf "service rm %s" service) 
-                                |> Async.map Proc.failOnExitCode |> Async.Ignore
-                        | None ->
-                            do! DockerMachine.runDockerKill clusterName n.Name container.ContainerId
-                            do! DockerMachine.runDockerRemove clusterName n.Name container.ContainerId
-            
+            let killBlockingServices () =
+              async {
+                for n in d.Nodes do
+                    let! containers = DockerMachine.runDockerPs clusterName n.Name
+                    for container in containers do
+                        let! inspect = DockerMachine.runDockerInspect clusterName n.Name container.ContainerId
+                        if inspect.Mounts
+                           |> Seq.exists (fun m -> m.Driver = Some "flocker") then
+                            match inspect.Config.Labels.ComDockerSwarmServiceName with
+                            | Some service ->
+                                do! DockerMachine.runDockerOnNode clusterName n.Name (sprintf "service rm %s" service) 
+                                    |> Async.map Proc.failOnExitCode |> Async.Ignore
+                            | None ->
+                                do! DockerMachine.runDockerKill clusterName n.Name container.ContainerId
+                                do! DockerMachine.runDockerRemove clusterName n.Name container.ContainerId
+              }
+            do! killBlockingServices()
+
             // Give flocker some time to act and delete its nodes
             let mutable containsItems = true
-            while containsItems do
+            let mutable iter = 0
+            while containsItems && iter < 500 do
                 let! items = Volume.list clusterName
                 containsItems <- not items.IsEmpty
+                iter <- iter + 1
                 if containsItems then
-                    eprintfn "Give flocker some time to cleanup..."
+                    eprintfn "Give flocker some time to cleanup.., missing:\n%A" items
                     do! Async.Sleep 500
+                if iter % 60 = 0 then
+                    eprintfn "try restarting flocker instances"
+                    for n in d.Nodes do
+                        let! containers = DockerMachine.runDockerPs clusterName n.Name
+                        for container in containers do
+                            let! inspect = DockerMachine.runDockerInspect clusterName n.Name container.ContainerId
+                            if inspect.Name = "flocker-control-service" 
+                            || inspect.Name = "flocker-dataset-agent" 
+                            || inspect.Name = "flocker-docker-plugin" then
+                                do! DockerMachine.runDockerOnNode clusterName n.Name (sprintf "restart %s" container.ContainerId) 
+                                    |> Async.map Proc.failOnExitCode |> Async.Ignore
+                    // again try to kill all services/containers
+                    do! killBlockingServices()
 
             // Clear/Delete docker-machines
             for n in d.Nodes do

@@ -24,6 +24,8 @@ module Proc =
                 do! destination2.WriteAsync(buffer, 0, !bytesRead, tok) |> Async.AwaitTask
                 let! bytesReadT = source.ReadAsync(buffer, 0, buffer.Length, tok) |> Async.AwaitTask
                 bytesRead := bytesReadT
+            do! destination1.FlushAsync() |> Async.AwaitTask
+            do! destination2.FlushAsync() |> Async.AwaitTask
           }
 
     type StdInMode =
@@ -180,14 +182,19 @@ module Proc =
                 |> Async.AwaitEvent
         // Waiting for the process to exit (buffers)
         toolProcess.WaitForExit()
-        tok.Cancel() // cancel redirection tasks
-        let exitCode = toolProcess.ExitCode
-        for t in 
-            [readErrorTask; readOutputTask; redirectStdInTask] do
-            // wait for finish -> AwaitTask has a bug which makes it unusable for chanceled tasks.
-            // workaround with continuewith
-            do! t.ContinueWith (new System.Func<System.Threading.Tasks.Task<int>, int> (fun t -> 1)) |> Async.AwaitTask |> Async.Ignore
-            
+
+        
+        let delay = System.Threading.Tasks.Task.Delay 500
+        let all =  System.Threading.Tasks.Task.WhenAll([readErrorTask; readOutputTask; redirectStdInTask])
+        let! t = System.Threading.Tasks.Task.WhenAny(all, delay)
+                 |> Async.AwaitTask
+        if t = delay then
+            eprintfn "At least one redirection task did not finish: \nReadErrorTask: %O, ReadOutputTask: %O, RedirectStdInTask: %O" readErrorTask.Status readOutputTask.Status redirectStdInTask.Status
+        tok.Cancel()
+        // wait for finish -> AwaitTask has a bug which makes it unusable for chanceled tasks.
+        // workaround with continuewith
+        do! all.ContinueWith (new System.Func<System.Threading.Tasks.Task, int> (fun t -> 1)) |> Async.AwaitTask |> Async.Ignore
+           
         setEcho false |> ignore
         outMem.Position <- 0L
         errMem.Position <- 0L
