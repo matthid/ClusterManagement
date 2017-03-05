@@ -289,3 +289,6 @@ module Proc =
             sb.Append(@""" ") |> ignore
         
         sb.ToString(0, System.Math.Max(0, sb.Length - 1))
+
+    let escapeCommandLineForShell (cmdLine:string) =
+        sprintf "'%s'" (cmdLine.Replace("'", "'\\''"))

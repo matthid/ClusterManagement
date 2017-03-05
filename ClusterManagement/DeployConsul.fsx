@@ -37,7 +37,7 @@ for master in [ 1 .. masterNum ] do
     |> Async.RunSynchronously
     if master = 1 then
         runDocker 
-            (sprintf "service create --name consul-master-%02d --mount type=volume,src=%s,dst=/consul/data,volume-driver=flocker --network swarm-net --constraint node.role==manager -e 'CONSUL_LOCAL_CONFIG={\\\"skip_leave_on_interrupt\\\":true}' consul agent -server -advertise=10.0.0.3 -bootstrap-expect=%d -bind=0.0.0.0 -client=0.0.0.0"
+            (sprintf "service create --name consul-master-%02d --mount type=volume,src=%s,dst=/consul/data,volume-driver=flocker --network swarm-net --constraint node.role==manager -e 'CONSUL_LOCAL_CONFIG={\"skip_leave_on_interrupt\":true}' consul agent -server -advertise=10.0.0.3 -bootstrap-expect=%d -bind=0.0.0.0 -client=0.0.0.0"
                 master volName masterNum)
             |> Proc.failOnExitCode
             |> ignore
@@ -47,19 +47,28 @@ for master in [ 1 .. masterNum ] do
         if ip.Addr <> "10.0.0.2" then failwithf "expected ip 10.0.0.2, but was %s" ip.Addr
     else
         runDocker 
-            (sprintf "service create --name consul-master-%02d --mount type=volume,src=%s,dst=/consul/data,volume-driver=flocker --network swarm-net --constraint node.role==manager -e 'CONSUL_LOCAL_CONFIG={\\\"skip_leave_on_interrupt\\\":true}' consul agent -server -advertise=10.0.0.%d -retry-join=10.0.0.3 -bootstrap-expect=%d -bind=0.0.0.0 -client=0.0.0.0"
+            (sprintf "service create --name consul-master-%02d --mount type=volume,src=%s,dst=/consul/data,volume-driver=flocker --network swarm-net --constraint node.role==manager -e 'CONSUL_LOCAL_CONFIG={\"skip_leave_on_interrupt\":true}' consul agent -server -advertise=10.0.0.%d -retry-join=10.0.0.3 -bootstrap-expect=%d -bind=0.0.0.0 -client=0.0.0.0"
                 master volName (1 + master * 2) masterNum)
             |> Proc.failOnExitCode
             |> ignore
 
 let contraint = if rawWorkerNum > 0 then "--constraint node.role!=manager " else ""
 runDocker 
-    (sprintf "service create %s--name consul --replicas %d --network swarm-net consul agent -bind=0.0.0.0 -client=0.0.0.0 -retry-join=10.0.0.3 -retry-join=10.0.0.5 -retry-join=10.0.0.7"
-        contraint workerNum)
+    (sprintf "service create %s--name consul --replicas %d --network swarm-net consul agent -advertise=10.0.0.%d -bind=0.0.0.0 -client=0.0.0.0 -retry-join=10.0.0.3 -retry-join=10.0.0.5 -retry-join=10.0.0.7"
+        contraint workerNum (3 + masterNum * 2))
 
 // add tokens as config
+let mutable retryCount = 10
 for tok in Config.getTokens d.ClusterName d.ClusterConfig do
-    runDocker
-        (sprintf "run --net=swarm-net consul kv put -http-addr=consul:8500 yaaf/config/tokens/%s %s" tok.Name tok.Value)
-    |> Proc.failOnExitCode
-    |> ignore
+    let mutable success = false
+    while not success do
+        try
+            runDocker
+                (sprintf "run --net=swarm-net consul kv put -http-addr=consul:8500 yaaf/config/tokens/%s %s" tok.Name tok.Value)
+            |> Proc.failOnExitCode
+            |> ignore
+            success <- true
+        with e when retryCount > 0 ->
+            eprintfn "Failed to contact consul server, might be still starting up... waiting some time. error was: %O" e
+            retryCount <- retryCount - 1
+            System.Threading.Thread.Sleep 500

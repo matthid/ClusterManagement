@@ -34,7 +34,7 @@ module Providers =
             let awsRegion = (ClusterConfig.getConfig "AWS_REGION" clusterConfig).Value
         
             let! res = DockerMachine.runInteractive clusterName (sprintf "create --driver amazonec2 --amazonec2-region %s \"%s\"" awsRegion machineName)
-            res |> Proc.failWithMessage "failed create new machine!" |> ignore
+            res |> Proc.failWithMessage "failed create new machine! If the error reads 'There is already a keypair' you should try to remove the corresponding key from the aws console." |> ignore
         | Generic ->
             let privKey = (ClusterConfig.getConfig "SSH_KEY" clusterConfig).Value
             let host = (ClusterConfig.getConfig "SSH_HOST" clusterConfig).Value

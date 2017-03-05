@@ -37,7 +37,7 @@ module DockerMachine =
     let runOnNode cluster nodeName command =
       async {
         let machineName = getMachineName cluster nodeName
-        return! run cluster (sprintf "ssh %s %s" machineName command)
+        return! run cluster (sprintf "ssh %s %s" machineName (Proc.escapeCommandLineForShell command))
       }
 
     let getExternalIp cluster nodeName =

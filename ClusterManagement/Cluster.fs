@@ -346,15 +346,17 @@ module Cluster =
         if not isInit then
             eprintfn "WARN: Cluster is not initialized. No-op."
         else
-            // Clear/Delete volumes -> Sets them to status "deleting"
-            let! datasets = Volume.list clusterName
-            for d in datasets do
-                do! Volume.destroy clusterName d.Dataset
-            
             // Kill all containers which block deletion of volumes
             let d = Deploy.getInfoInternal clusterName [||]
             let killBlockingServices () =
               async {
+                // shutdown all services.
+                let! servicesOut = DockerMachine.runDockerOnNode clusterName "master-01" "service ls"
+                let services = servicesOut |> Proc.failOnExitCode |> Proc.getStdOut |> DockerWrapper.parseServices
+                for service in services do
+                    let! exitOut = DockerMachine.runDockerOnNode clusterName "master-01" (sprintf "service rm %s" service.Id)
+                    exitOut |> Proc.failOnExitCode |> ignore
+
                 for n in d.Nodes do
                     let! containers = DockerMachine.runDockerPs clusterName n.Name
                     for container in containers do
@@ -370,30 +372,39 @@ module Cluster =
                                 do! DockerMachine.runDockerRemove clusterName n.Name container.ContainerId
               }
             do! killBlockingServices()
+            
+            // Clear/Delete volumes -> Sets them to status "deleting"
+            let! datasets = Volume.list clusterName
+            for d in datasets do
+                do! Volume.destroy clusterName d.Dataset
 
             // Give flocker some time to act and delete its nodes
             let mutable containsItems = true
             let mutable iter = 0
-            while containsItems && iter < 500 do
+            let maxIter = 2000
+            while containsItems && iter < maxIter do
                 let! items = Volume.list clusterName
                 containsItems <- not items.IsEmpty
                 iter <- iter + 1
                 if containsItems then
                     eprintfn "Give flocker some time to cleanup.., missing:\n%A" items
                     do! Async.Sleep 500
-                if iter % 60 = 0 then
+                if iter % 120 = 0 then
                     eprintfn "try restarting flocker instances"
                     for n in d.Nodes do
                         let! containers = DockerMachine.runDockerPs clusterName n.Name
                         for container in containers do
                             let! inspect = DockerMachine.runDockerInspect clusterName n.Name container.ContainerId
-                            if inspect.Name = "flocker-control-service" 
-                            || inspect.Name = "flocker-dataset-agent" 
-                            || inspect.Name = "flocker-docker-plugin" then
+                            if inspect.Name.Contains "flocker-control-service" 
+                            || inspect.Name.Contains "flocker-dataset-agent" 
+                            || inspect.Name.Contains "flocker-docker-plugin" then
                                 do! DockerMachine.runDockerOnNode clusterName n.Name (sprintf "restart %s" container.ContainerId) 
                                     |> Async.map Proc.failOnExitCode |> Async.Ignore
                     // again try to kill all services/containers
                     do! killBlockingServices()
+            
+            if iter = maxIter then
+                eprintfn "COULD NOT DELETE ALL FLOCKER IMAGES. DATA MIGHT BE LEFT - PLEASE DELETE THEM IN YOUR AWS CONSOLE."
 
             // Clear/Delete docker-machines
             for n in d.Nodes do
