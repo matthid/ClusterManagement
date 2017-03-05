@@ -143,7 +143,31 @@ type ConfigSetArgs =
             | Cluster _ -> "Change configuration of an existing cluster."
             | Key _ -> "The key of the config to create."
             | Value _ -> "The value of the config to create."
-            
+ 
+type ConfigUploadArgs =
+    | [<AltCommandLine("-c")>] [<Mandatory>] Cluster of string
+    | Name of string
+    | [<AltCommandLine("-f")>] FilePath of string
+  with
+    interface IArgParserTemplate with
+        member this.Usage = 
+            match this with
+            | Cluster _ -> "Upload a configuration file for an existing cluster."
+            | Name _ -> "The name of the config to create (can contain / for folders)."
+            | FilePath _ -> "The file to upload."
+
+type ConfigDownloadArgs =
+    | [<AltCommandLine("-c")>] [<Mandatory>] Cluster of string
+    | Name of string
+    | [<AltCommandLine("-f")>] FilePath of string
+  with
+    interface IArgParserTemplate with
+        member this.Usage = 
+            match this with
+            | Cluster _ -> "Download a configuration file of an existing cluster."
+            | Name _ -> "The name of the config to retrieve (can contain / for folders)."
+            | FilePath _ -> "The file to write."
+                        
 type ConfigGetArgs =
     | [<AltCommandLine("-c")>] [<Mandatory>] Cluster of string
     | Key of string
@@ -175,6 +199,8 @@ type ConfigCopyArgs =
             | Dest _ -> "The name of the destination cluster to copy the configuration into."
              
 type ConfigArgs =
+    | [<CliPrefix(CliPrefix.None)>] Upload of ParseResults<ConfigUploadArgs>
+    | [<CliPrefix(CliPrefix.None)>] Download of ParseResults<ConfigDownloadArgs>
     | [<CliPrefix(CliPrefix.None)>] Set of ParseResults<ConfigSetArgs>
     | [<CliPrefix(CliPrefix.None)>] Get of ParseResults<ConfigGetArgs>
     | [<CliPrefix(CliPrefix.None)>] Copy of ParseResults<ConfigCopyArgs>
@@ -183,6 +209,8 @@ type ConfigArgs =
     interface IArgParserTemplate with
         member this.Usage = 
             match this with
+            | Upload _ -> "Upload a new configuration file."
+            | Download _ -> "Download a new configuration file."
             | Set _ -> "Set a new configuration key."
             | Get _ -> "Get a configuration value by key."
             | Copy _ -> "Copy configuration from one cluster to another."

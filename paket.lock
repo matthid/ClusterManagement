@@ -14,8 +14,17 @@ NUGET
     Suave (2.0)
       FSharp.Core (>= 4.0.0.1)
     System.Collections.Immutable (1.3.1)
+    System.Net.Http (4.3.1)
+      System.Security.Cryptography.X509Certificates (>= 4.3)
     System.Reflection.Metadata (1.4.2)
       System.Collections.Immutable (>= 1.3.1)
+    System.Security.Cryptography.Algorithms (4.3)
+      System.Security.Cryptography.Primitives (>= 4.3)
+    System.Security.Cryptography.Encoding (4.3)
+    System.Security.Cryptography.Primitives (4.3)
+    System.Security.Cryptography.X509Certificates (4.3)
+      System.Security.Cryptography.Algorithms (>= 4.3)
+      System.Security.Cryptography.Encoding (>= 4.3)
     Unquote (3.1.2)
 GITHUB
   remote: matthid/Yaaf.FSharp.Scripting

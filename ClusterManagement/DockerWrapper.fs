@@ -105,6 +105,18 @@ module DockerWrapper =
         | None ->
             failwithf "cannot use '%s' within docker container, as it is not mapped. Try to map it via '-v /some/dir:%s'" currentDir currentDir
 
+    let mapGivenPath (path:string) =
+        if Env.isContainerized then
+            if System.IO.Path.IsPathRooted(path) then
+                // look into /host
+                "/host" + path
+            else
+                // append to /workDir
+                System.IO.Path.Combine("/workDir", path.Replace("\\", "/"))
+        else
+            path
+
+
     let flockerca flockercerts args =
       async {
         let path = System.IO.Path.GetFullPath (flockercerts)

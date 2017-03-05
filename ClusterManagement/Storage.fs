@@ -12,6 +12,7 @@ open FSharp.Configuration
 ///          /cm-config.yml (secrets for decrypted clusters and global local configuration)
 ///          /cluster1 (folder for temporary cluster operations, decrypted contents of cluster1.cluster)
 ///                   /docker-machine (configuration of docker-machine)
+///                   /config-files (cluster specific configuration files)
 ///                   /cluster-config.yml (cluster specific configuration)
 ///                   /global (cluster specific global files)
 ///                          /cluster.key (example: cluster certificate, for flocker)
@@ -26,10 +27,10 @@ module StoragePath =
     let clusterConfig = "cluster-config.yml"
     let storagePath =
         let env = Environment.GetEnvironmentVariable "CM_STORAGE"
-        ref (if String.IsNullOrEmpty env then ".cm" else env)
+        ref (if String.IsNullOrEmpty env then Path.Combine("clustercfg", ".cm") else env)
     let private tempStoragePath =
         let env = Environment.GetEnvironmentVariable "CM_TEMP_STORAGE"
-        ref (if String.IsNullOrEmpty env then ".cm-temp" else env)
+        ref (if String.IsNullOrEmpty env then Path.Combine("clustercfg", ".cm-temp") else env)
     let ensureAndReturnDir p =
         if Directory.Exists p |> not then
             Directory.CreateDirectory p |> ignore
@@ -51,6 +52,10 @@ module StoragePath =
         
     let getGlobalConfigDir name =
         Path.Combine(getClusterDirectory name, "global")
+        |> ensureAndReturnDir
+        
+    let getConfigFilesDir name =
+        Path.Combine(getClusterDirectory name, "config-files")
         |> ensureAndReturnDir
         
     let getNodesDir name =
@@ -290,6 +295,22 @@ module Storage =
         if File.Exists file then
             File.Delete (file)
         
+        
+module ConfigStorage =
+    open StoragePath
+
+    let writeFile cluster path data =
+        let basePath = getConfigFilesDir cluster
+        let fullPath = Path.Combine (basePath, path)
+        let dirPath = Path.GetDirectoryName (fullPath) |> ensureAndReturnDir
+        File.WriteAllBytes(fullPath, data)
+        
+    let tryReadFile cluster path =
+        let basePath = getConfigFilesDir cluster
+        let fullPath = Path.Combine (basePath, path)
+        if File.Exists fullPath then
+            Some (File.ReadAllBytes(fullPath))
+        else None
 
 module ClusterInfo =
     open StoragePath

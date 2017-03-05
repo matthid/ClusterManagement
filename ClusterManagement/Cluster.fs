@@ -365,8 +365,11 @@ module Cluster =
                            |> Seq.exists (fun m -> m.Driver = Some "flocker") then
                             match inspect.Config.Labels.ComDockerSwarmServiceName with
                             | Some service ->
-                                do! DockerMachine.runDockerOnNode clusterName n.Name (sprintf "service rm %s" service) 
-                                    |> Async.map Proc.failOnExitCode |> Async.Ignore
+                                // might have been deleted already (above), but just to be safe...
+                                let! res = DockerMachine.runDockerOnNode clusterName n.Name (sprintf "service rm %s" service) 
+                                let stdOut = res.Output.StdErr
+                                if stdOut.Contains "not found" then ()
+                                else res |> Proc.failOnExitCode |> ignore
                             | None ->
                                 do! DockerMachine.runDockerKill clusterName n.Name container.ContainerId
                                 do! DockerMachine.runDockerRemove clusterName n.Name container.ContainerId

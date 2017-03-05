@@ -12,6 +12,7 @@ nuget NUnit
 nuget Unquote
 nuget FSharp.Compiler.Service
 nuget Suave
+nuget System.Net.Http
 
 github matthid/Yaaf.FSharp.Scripting src/source/Yaaf.FSharp.Scripting/YaafFSharpScripting.fs
 

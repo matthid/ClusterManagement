@@ -25,7 +25,7 @@ let checkDocker () =
     
     // Check if docker works
     if Env.isLinux && not (System.IO.File.Exists("/var/run/docker.sock")) then
-       failwithf "Docker socket not found! Please use '-v /var/run/docker.sock:/var/run/docker.sock -v /mydir/on/host:/clustercfg' when running this from within a docker container."
+       failwithf "Docker socket not found! Please use '-v /var/run/docker.sock:/var/run/docker.sock -v $PWD:/workDir -v /:/host' when running this from within a docker container."
 
     do! DockerWrapper.ensureWorking()
     do! DockerMachineWrapper.ensureWorking()
@@ -211,6 +211,36 @@ let handleArgs (argv:string array) =
             | Some (Config configRes) ->
                 checkDocker () |> Async.RunSynchronously 
                 match configRes.TryGetSubCommand() with
+                | Some (ConfigArgs.Upload uploadArgs) ->
+                    //uploadArgs
+                    let clusterName = uploadArgs.GetResult <@ ConfigUploadArgs.Cluster @>
+                    let filePath = 
+                        uploadArgs.GetResult <@ ConfigUploadArgs.FilePath @>
+                        |> DockerWrapper.mapGivenPath
+                        
+                    let name = uploadArgs.GetResult <@ ConfigUploadArgs.Name @>
+                    
+                    let data = File.ReadAllBytes(filePath)
+                    Storage.openClusterWithStoredSecret clusterName
+                    ConfigStorage.writeFile clusterName name data
+                    Storage.closeClusterWithStoredSecret clusterName
+                    0
+                | Some (ConfigArgs.Download downloadArgs) ->
+                    let clusterName = downloadArgs.GetResult <@ ConfigDownloadArgs.Cluster @>
+                    let filePath =
+                        downloadArgs.GetResult <@ ConfigDownloadArgs.FilePath @>
+                        |> DockerWrapper.mapGivenPath
+                    let name = downloadArgs.GetResult <@ ConfigDownloadArgs.Name @>
+                
+                    Storage.openClusterWithStoredSecret clusterName
+                    let res = ConfigStorage.tryReadFile clusterName name
+                    Storage.closeClusterWithStoredSecret clusterName
+                    match res with
+                    | Some va ->
+                        File.WriteAllBytes(filePath, va)
+                        0
+                    | None ->
+                        103
                 | Some (ConfigArgs.Get getArgs) ->
                     let name = getArgs.GetResult <@ ConfigGetArgs.Key @>
                     let clusterName = getArgs.GetResult <@ ConfigGetArgs.Cluster @>

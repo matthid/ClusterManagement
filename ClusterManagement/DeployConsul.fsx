@@ -58,7 +58,7 @@ runDocker
         contraint workerNum (3 + masterNum * 2))
 
 // add tokens as config
-let mutable retryCount = 10
+let mutable retryCount = 120
 for tok in Config.getTokens d.ClusterName d.ClusterConfig do
     let mutable success = false
     while not success do
@@ -71,4 +71,5 @@ for tok in Config.getTokens d.ClusterName d.ClusterConfig do
         with e when retryCount > 0 ->
             eprintfn "Failed to contact consul server, might be still starting up... waiting some time. error was: %O" e
             retryCount <- retryCount - 1
-            System.Threading.Thread.Sleep 500
+            System.Threading.Thread.Sleep 1000
+

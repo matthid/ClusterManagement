@@ -5,5 +5,6 @@ FSharp.Data
 Mono.Posix
 FSharp.Compiler.Service
 Suave
+System.Net.Http
 
 File:YaafFSharpScripting.fs
