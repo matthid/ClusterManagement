@@ -57,6 +57,7 @@
   </Target>
   -->
   <ItemGroup>
+    <EmbeddedResource Include="testdata/flockerctl-list-example-01.txt" />
     <Compile Include="AssemblyInfo.fs" />
     <Compile Include="Test.fs" />
     <None Include="Script.fsx" />

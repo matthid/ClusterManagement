@@ -68,9 +68,9 @@ let handleArgs (argv:string array) =
             printfn "Version: 0.1.0"
             0
         else
-            checkDocker () |> Async.RunSynchronously 
             match results.TryGetSubCommand() with
             | Some (Cluster clusterRes) ->
+                checkDocker () |> Async.RunSynchronously 
                 match clusterRes.TryGetSubCommand() with
                 | Some (ClusterArgs.Encrypt encryptRes) ->
                     let cluster = clusterRes.GetResult <@ ClusterArgs.Cluster @>
@@ -124,6 +124,7 @@ let handleArgs (argv:string array) =
                     printfn "%s" (clusterRes.Parser.PrintUsage())
                     1
             | Some (List listRes) ->
+                checkDocker () |> Async.RunSynchronously 
                 match listRes.TryGetSubCommand() with
                 | Some (ListArgs.Cluster _) ->
                     let formatPrint name secretAvailable isInitialized =
@@ -139,6 +140,7 @@ let handleArgs (argv:string array) =
                     printfn "%s" (listRes.Parser.PrintUsage())
                     1
             | Some (Volume res) ->
+                checkDocker () |> Async.RunSynchronously 
                 match res.TryGetSubCommand() with
                 | Some (VolumeArgs.List listRes) ->
                     let clusterName = listRes.TryGetResult <@ ListVolumeArgs.Cluster @>
@@ -192,6 +194,7 @@ let handleArgs (argv:string array) =
                     printfn "%s" (res.Parser.PrintUsage())
                     1
             | Some (DockerMachine res) ->
+                checkDocker () |> Async.RunSynchronously 
                 match res.TryGetResult <@ DockerMachineArgs.Cluster @> with
                 | Some (name) ->
                     Storage.openClusterWithStoredSecret name
@@ -206,6 +209,7 @@ let handleArgs (argv:string array) =
                     1
                     
             | Some (Config configRes) ->
+                checkDocker () |> Async.RunSynchronously 
                 match configRes.TryGetSubCommand() with
                 | Some (ConfigArgs.Get getArgs) ->
                     let name = getArgs.GetResult <@ ConfigGetArgs.Key @>
@@ -275,6 +279,7 @@ let handleArgs (argv:string array) =
                     printfn "%s" (parser.PrintUsage())
                     1
             | Some (Provision res) ->
+                checkDocker () |> Async.RunSynchronously 
                 let nodeName = res.GetResult <@ ProvisionArgs.NodeName @>
                 let clusterName = res.GetResult <@ ProvisionArgs.Cluster @>
                 let nodeType = res.GetResult <@ ProvisionArgs.NodeType @>
@@ -282,15 +287,18 @@ let handleArgs (argv:string array) =
                 |> Async.RunSynchronously
                 0
             | Some (Deploy res) ->
+                checkDocker () |> Async.RunSynchronously 
                 let script = res.GetResult <@ DeployArgs.Script @>
                 let clusterName = res.GetResult <@ DeployArgs.Cluster @>
                 Deploy.deploy clusterName script restArgs
                 0
             | Some (Export res) ->
+                checkDocker () |> Async.RunSynchronously 
                 // TODO: make sure to export flocker-container as well
                 raise <| NotImplementedException "not implemented"
                 0
             | Some (Import res) ->
+                checkDocker () |> Async.RunSynchronously 
                 // TODO: make sure to import flocker-container as well
                 raise <| NotImplementedException "not implemented"
                 0

@@ -50,7 +50,46 @@ type Test() =
                          Volume.FlockerVolume.ServerIP = "(127.0.0.1)"}] @>
 
         ()
+          
+    [<Test>]
+    member __.``Test parse flockerctl list output (example-01)`` () =
+        let assembly = System.Reflection.Assembly.GetExecutingAssembly()
+        let resourceName = "flockerctl-list-example-01.txt";
+
+        let out =
+           use stream = assembly.GetManifestResourceStream(resourceName)
+           use reader = new StreamReader(stream)
+           reader.ReadToEnd()
+
+        let res = Volume.parseList out
         
+        test 
+            <@ res = [ { Volume.FlockerVolume.Dataset = "5315f55b-f553-4351-ba7c-b2b787650e61"; 
+                         Volume.FlockerVolume.Size = "75.00G"; 
+                         Volume.FlockerVolume.Metadata = "name=master-01-consul"; 
+                         Volume.FlockerVolume.Status = "attached"; 
+                         Volume.FlockerVolume.ServerId = "fced724d"
+                         Volume.FlockerVolume.ServerIP = "(127.0.0.1)"}
+                       { Volume.FlockerVolume.Dataset = "262a1039-e780-4a0d-89c7-e71025717357"; 
+                         Volume.FlockerVolume.Size = "75.00G"; 
+                         Volume.FlockerVolume.Metadata = "name=master-03-consul"; 
+                         Volume.FlockerVolume.Status = "attached"; 
+                         Volume.FlockerVolume.ServerId = "fced724d"
+                         Volume.FlockerVolume.ServerIP = "(127.0.0.1)"}
+                       { Volume.FlockerVolume.Dataset = "b2425a25-c054-4997-9021-cc557ec8deb9"; 
+                         Volume.FlockerVolume.Size = "75.00G"; 
+                         Volume.FlockerVolume.Metadata = "name=master-02-consul"; 
+                         Volume.FlockerVolume.Status = "attached"; 
+                         Volume.FlockerVolume.ServerId = "fced724d"
+                         Volume.FlockerVolume.ServerIP = "(127.0.0.1)"}
+                       { Volume.FlockerVolume.Dataset = "c78842a6-d5d1-4418-a8c8-0a0b19740982"; 
+                         Volume.FlockerVolume.Size = "1.00G"; 
+                         Volume.FlockerVolume.Metadata = "cluster=seafile-temp,name=seafile-temp-master-01-consul"; 
+                         Volume.FlockerVolume.Status = "attached"; 
+                         Volume.FlockerVolume.ServerId = "fced724d"
+                         Volume.FlockerVolume.ServerIP = "(127.0.0.1)"}] @>
+
+        ()
         
     [<Test>]
     member __.``Test parse flockerctl list-nodes output`` () =

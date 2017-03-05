@@ -139,4 +139,6 @@ module DockerMachine =
         let! res = runDockerOnNode cluster nodeName (sprintf "rm %s" containerId)
         res |> Proc.failOnExitCode |> ignore
       }
+
+            
         

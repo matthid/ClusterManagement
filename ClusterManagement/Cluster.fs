@@ -359,8 +359,13 @@ module Cluster =
                     let! inspect = DockerMachine.runDockerInspect clusterName n.Name container.ContainerId
                     if inspect.Mounts
                        |> Seq.exists (fun m -> m.Driver = Some "flocker") then
-                        do! DockerMachine.runDockerKill clusterName n.Name container.ContainerId
-                        do! DockerMachine.runDockerRemove clusterName n.Name container.ContainerId
+                        match inspect.Config.Labels.ComDockerSwarmServiceName with
+                        | Some service ->
+                            do! DockerMachine.runDockerOnNode clusterName n.Name (sprintf "service rm %s" service) 
+                                |> Async.map Proc.failOnExitCode |> Async.Ignore
+                        | None ->
+                            do! DockerMachine.runDockerKill clusterName n.Name container.ContainerId
+                            do! DockerMachine.runDockerRemove clusterName n.Name container.ContainerId
             
             // Give flocker some time to act and delete its nodes
             let mutable containsItems = true

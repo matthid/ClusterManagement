@@ -24,7 +24,7 @@ module Config =
         |> ClusterConfig.setConfig key value
         |> ClusterConfig.writeClusterConfig clusterName
         Storage.quickSaveClusterWithStoredSecret clusterName
-    
+
     let ensureConfig clusterName n cc =
         match ClusterConfig.getConfig n cc with
         | None | Some "" | Some null ->

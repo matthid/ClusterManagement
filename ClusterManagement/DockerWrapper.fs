@@ -133,6 +133,58 @@ module DockerWrapper =
 
         ()
       }
+      
+    type DockerServiceReplicas = { Current : int; Requested : int}
+    type DockerService =
+        { Id : string; Name : string; Mode : string; Replicas : DockerServiceReplicas; Image : string }
+    let parseServices (out:string) =
+        let splitLine (line:string) =
+            let (s:string array) = line.Split ([|' '; '\t'|], System.StringSplitOptions.RemoveEmptyEntries)
+            assert (s.Length = 5)
+            if s.Length <> 5 then 
+                if s.Length > 5 
+                    then eprintfn "Could not parse output line from 'docker service ls': %s" line 
+                    else failwithf "Could not parse output line from 'docker service ls': %s" line 
+            let (rep:string array) = s.[3].Split([|'/'|])
+            if rep.Length <> 2 then 
+                if rep.Length > 2
+                    then eprintfn "Could not parse output (rep) line from 'docker service ls': %s" line
+                    else failwithf "Could not parse output (rep) line from 'docker service ls': %s" line
+            let currentRep = 
+                match System.Int32.TryParse(rep.[0]) with
+                | true, i -> i
+                | _ -> failwithf "Could not parse output line (currentRep) from 'docker service ls': %s" line
+            let maxRep = 
+                match System.Int32.TryParse(rep.[1]) with
+                | true, i -> i
+                | _ -> failwithf "Could not parse output line (maxRep) from 'docker service ls': %s" line
+            { Id = s.[0]; Name = s.[1]; Mode = s.[2]; Replicas = { Current = currentRep; Requested = maxRep }; Image = s.[4] }
+
+        out.Split([| '\r'; '\n' |], System.StringSplitOptions.RemoveEmptyEntries)
+        |> Seq.skip 1
+        |> Seq.map splitLine
+        |> Seq.toList
+
+        
+    type internal ServiceInspectJson = FSharp.Data.JsonProvider< "service-inspect-example.json" >
+    type VirtualIp = { NetworkId : string; Addr : string; NetmaskBits : int }
+    type ServiceInspectEndpoint = { VirtualIps : VirtualIp list }
+    type ServiceInspect =
+        { Id : string
+          Endpoint : ServiceInspectEndpoint }
+    let getServiceInspectJson json =
+        let json = ServiceInspectJson.Load(new System.IO.StringReader(json))
+        let inspectRaw = json.[0]
+        { Id = inspectRaw.Id
+          Endpoint = 
+            { VirtualIps = 
+                inspectRaw.Endpoint.VirtualIPs 
+                |> Seq.map (fun ip -> 
+                    let addrSplit = ip.Addr.Split([|'/'|])
+                    { NetworkId = ip.NetworkId; Addr = addrSplit.[0]; NetmaskBits = System.Int32.Parse(addrSplit.[1]) }) 
+                |> Seq.toList
+            }
+        }
 
 module DockerMachineWrapper =
     let dockerMachinePath = ref "docker-machine"

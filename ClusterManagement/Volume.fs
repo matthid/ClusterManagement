@@ -41,15 +41,48 @@ module Volume =
     let internal parseList (out:string) =
         //DATASET                                SIZE     METADATA                     STATUS         SERVER               
         //4bd4f27f-65dd-435b-aaa9-2bdf28f6f3d8   75.00G   name=blub-master-01-consul   attached ✅   31f83f34 (127.0.0.1) 
-        let splitLine (line:string) =
+        let splitLine (prevLine:string,prevSplits:string array,last:FlockerVolume) (line:string) =
             let (s:string array) = line.Split ([|' '; '\t'|], System.StringSplitOptions.RemoveEmptyEntries)
-            assert (s.Length > 5)
-            { Dataset = s.[0]; Size = s.[1]; Metadata = s.[2]; Status = s.[3]; ServerId = s.[s.Length - 2]; ServerIP = s.[s.Length - 1]}
+            if s.Length < 6 then
+                // fixup/addition of last line
+                assert (not (isNull prevLine))
+                // append each split to the data with the correct index
+                
+                prevLine, prevSplits,
+                    s
+                    |> Seq.fold (fun data fixup ->
+                        let fixupIndex = line.IndexOf(fixup)
+                        match fixupIndex with
+                        | _ when fixupIndex = prevLine.IndexOf(prevSplits.[0]) -> // Dataset
+                            if s.Length = 1 then
+                                // most likely garbage...
+                                data
+                            else
+                                {data with Dataset = data.Dataset + fixup }
+                        | _ when fixupIndex = prevLine.IndexOf(prevSplits.[1]) -> // Size
+                            {data with Size = data.Size + fixup }
+                        | _ when fixupIndex = prevLine.IndexOf(prevSplits.[2]) -> // Metadata
+                            {data with Metadata = data.Metadata + fixup }
+                        | _ when fixupIndex = prevLine.IndexOf(prevSplits.[3]) -> // Status
+                            {data with Status = data.Status + fixup }
+                        | _ when fixupIndex = prevLine.IndexOf(prevSplits.[prevSplits.Length - 2]) -> // ServerId
+                            {data with ServerId = data.ServerId + fixup }
+                        | _ when fixupIndex = prevLine.IndexOf(prevSplits.[prevSplits.Length - 1]) -> // ServerIP
+                            {data with ServerIP = data.ServerIP + fixup }
+                        | _ -> failwithf "Could not detect position of fixup: PrevLine: %s, CurrentLine %s" prevLine line
+                        ) last
+            else
+                line, s, { Dataset = s.[0]; Size = s.[1]; Metadata = s.[2]; Status = s.[3]; ServerId = s.[s.Length - 2]; ServerIP = s.[s.Length - 1]}
 
         let items =
             out.Split([| '\r'; '\n' |], System.StringSplitOptions.RemoveEmptyEntries)
             |> Seq.skip 1
-            |> Seq.map splitLine
+            // Scan because lines might get extended...
+            |> Seq.scan splitLine (null, null, { Dataset = null; Size = null; Metadata = null; Status = null; ServerId = null; ServerIP = null })
+            |> Seq.map (fun (_,_,d) -> d)
+            |> Seq.skip 1
+            |> Seq.groupBy (fun d -> d.Dataset) // group by dataset
+            |> Seq.map (fun (_,g) -> g |> Seq.last) // take the last fixup
             |> Seq.toList
         items
         

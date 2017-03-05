@@ -76,7 +76,7 @@
     <None Include="cm-config.yml" />
     <None Include="cluster-config.yml" />
     <EmbeddedResource Include="agent.yml" />
-    <None Include="inspect-example.json" />
+    <None Include="service-inspect-example.json" />
     <EmbeddedResource Include="aws_config" />
     <EmbeddedResource Include="aws_credentials" />
     <EmbeddedResource Include="DeploySwarm.fsx" />
@@ -85,6 +85,7 @@
     <EmbeddedResource Include="DeployVault.fsx" />
     <None Include="machine-inspect-example.json" />
     <None Include="consul-get-sample.json" />
+    <None Include="inspect-example.json" />
   </ItemGroup>
   <PropertyGroup>
     <MinimumVisualStudioVersion Condition="'$(MinimumVisualStudioVersion)' == ''">11</MinimumVisualStudioVersion>

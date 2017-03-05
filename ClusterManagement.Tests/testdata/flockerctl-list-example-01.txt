@@ -1,0 +1,8 @@
+[?1h=[6n[H[2JDATASET                                SIZE     METADATA                                         STATUS         SERVER               
+5315f55b-f553-4351-ba7c-b2b787650e61   75.00G   name=master-01-consul                            attached ✅   fced724d (127.0.0.1) 
+262a1039-e780-4a0d-89c7-e71025717357   75.00G   name=master-03-consul                            attached ✅   fced724d (127.0.0.1) 
+b2425a25-c054-4997-9021-cc557ec8deb9   75.00G   name=master-02-consul                            attached ✅   fced724d (127.0.0.1) 
+c78842a6-d5d1-4418-a8c8-0a0b19740982   1.00G    cluster=seafile-temp,name=seafile-temp-          attached ✅   fced724d (127.0.0.1) 
+                                                master-01-consul                                                                     
+
+[?1l>[39;49m

@@ -17,7 +17,7 @@ module ServeConfig =
                     async {
                         let file = ctx.request.files.Head
                         let! loadAsync = 
-                            ConsulGetJson.AsyncLoad ("http://127.0.0.1:8500/v1/kv/yaaf/config/tokens?recurse=true")
+                            ConsulGetJson.AsyncLoad ("http://consul:8500/v1/kv/yaaf/config/tokens?recurse=true")
                         let tokens =
                             loadAsync
                             |> Seq.map (fun v ->
@@ -31,7 +31,7 @@ module ServeConfig =
             >=> (fun ctx -> 
                     async {
                         let! loadAsync = 
-                            ConsulGetJson.AsyncLoad ("http://127.0.0.1:8500/v1/kv/yaaf/config/tokens/CLUSTER_NAME")
+                            ConsulGetJson.AsyncLoad ("http://consul:8500/v1/kv/yaaf/config/tokens/CLUSTER_NAME")
                         
                         let tokens =
                             loadAsync
@@ -45,5 +45,7 @@ module ServeConfig =
                             return! Suave.ServerErrors.SERVICE_UNAVAILABLE "the cluster name is not available" ctx
                     })
         ]
+    let config =
+        { defaultConfig with bindings = [ HttpBinding.create HTTP IPAddress.Any 80us ] }
     let startServer () =
-        startWebServer defaultConfig app
+        startWebServer config app

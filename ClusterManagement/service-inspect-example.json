@@ -1,0 +1,91 @@
+﻿[
+  {
+    "ID": "c743urd10x9i87p5brcttk298",
+    "Version": {
+      "Index": 3523
+    },
+    "CreatedAt": "2017-03-05T08:29:43.23706568Z",
+    "UpdatedAt": "2017-03-05T08:29:43.238010367Z",
+    "Spec": {
+      "Name": "consul-primary",
+      "TaskTemplate": {
+        "ContainerSpec": {
+          "Image": "consul:latest@sha256:7fa3365242fca70d63e8e9737f4f1ac8687987d04bbdb7287bc80ea813e624ca",
+          "Args": [
+            "agent",
+            "-server",
+            "-advertise=10.0.0.3",
+            "-bind=0.0.0.0",
+            "-client=0.0.0.0",
+            "-bootstrap-expect=1"
+          ],
+          "Mounts": [
+            {
+              "Type": "volume",
+              "Source": "master-01-consul",
+              "Target": "/consul/data",
+              "VolumeOptions": {
+                "DriverConfig": {
+                  "Name": "flocker"
+                }
+              }
+            }
+          ],
+          "DNSConfig": {}
+        },
+        "Resources": {
+          "Limits": {},
+          "Reservations": {}
+        },
+        "RestartPolicy": {
+          "Condition": "any",
+          "MaxAttempts": 0
+        },
+        "Placement": {
+          "Constraints": [
+            "node.role == manager"
+          ]
+        },
+        "Networks": [
+          {
+            "Target": "53jic8d7xxyw75lx58l3a5psj"
+          }
+        ],
+        "ForceUpdate": 0
+      },
+      "Mode": {
+        "Replicated": {
+          "Replicas": 1
+        }
+      },
+      "UpdateConfig": {
+        "Parallelism": 1,
+        "FailureAction": "pause",
+        "MaxFailureRatio": 0
+      },
+      "Networks": [
+        {
+          "Target": "swarm-net"
+        }
+      ],
+      "EndpointSpec": {
+        "Mode": "vip"
+      }
+    },
+    "Endpoint": {
+      "Spec": {
+        "Mode": "vip"
+      },
+      "VirtualIPs": [
+        {
+          "NetworkID": "53jic8d7xxyw75lx58l3a5psj",
+          "Addr": "10.0.0.2/24"
+        }
+      ]
+    },
+    "UpdateStatus": {
+      "StartedAt": "0001-01-01T00:00:00Z",
+      "CompletedAt": "0001-01-01T00:00:00Z"
+    }
+  }
+]
