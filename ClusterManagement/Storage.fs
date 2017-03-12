@@ -13,9 +13,11 @@ open FSharp.Configuration
 ///          /cluster1 (folder for temporary cluster operations, decrypted contents of cluster1.cluster)
 ///                   /docker-machine (configuration of docker-machine)
 ///                   /config-files (cluster specific configuration files)
+///                   /services (services within this cluster, TODO)
+///                            /ldap (TODO)
 ///                   /cluster-config.yml (cluster specific configuration)
 ///                   /global (cluster specific global files)
-///                          /cluster.key (example: cluster certificate, for flocker)
+///                         /cluster.key (example: cluster certificate, for flocker)
 ///                   /nodes (node specific configurations)
 ///                         /master01
 ///                         /master02
@@ -27,19 +29,20 @@ module StoragePath =
     let clusterConfig = "cluster-config.yml"
     let storagePath =
         let env = Environment.GetEnvironmentVariable "CM_STORAGE"
-        ref (if String.IsNullOrEmpty env then Path.Combine("clustercfg", ".cm") else env)
+        if String.IsNullOrEmpty env then Path.Combine("clustercfg", ".cm") else env
     let private tempStoragePath =
         let env = Environment.GetEnvironmentVariable "CM_TEMP_STORAGE"
-        ref (if String.IsNullOrEmpty env then Path.Combine("clustercfg", ".cm-temp") else env)
+        if String.IsNullOrEmpty env then Path.Combine("clustercfg", ".cm-temp") else env
+
     let ensureAndReturnDir p =
         if Directory.Exists p |> not then
             Directory.CreateDirectory p |> ignore
         p
 
-    let getTempStoragePath () = !tempStoragePath |> ensureAndReturnDir
+    let getTempStoragePath () = tempStoragePath |> ensureAndReturnDir
     
     let getClusterDirectory name =
-        Path.Combine (!tempStoragePath, name)
+        Path.Combine (tempStoragePath, name)
         |> ensureAndReturnDir
 
         
@@ -71,7 +74,7 @@ module StoragePath =
         |> ensureAndReturnDir
         
     let getClusterFile name =
-        Path.Combine (!storagePath |> ensureAndReturnDir, sprintf "%s%s" name extension)
+        Path.Combine (storagePath |> ensureAndReturnDir, sprintf "%s%s" name extension)
 
     let configPath () = Path.Combine (getTempStoragePath (), configStorage)
 
@@ -312,13 +315,27 @@ module ConfigStorage =
             Some (File.ReadAllBytes(fullPath))
         else None
 
+    let getFiles cluster =
+        let basePath = getConfigFilesDir cluster
+        System.IO.Directory.GetFiles(basePath, "*", System.IO.SearchOption.AllDirectories)
+        |> Seq.map (fun s -> s.Substring (basePath.Length + 1))
+        |> Seq.toList
+
+    let ensureFile cluster path =
+        let basePath = getConfigFilesDir cluster
+        let fullPath = Path.Combine (basePath, path)
+        match File.Exists fullPath with
+        | false ->
+            failwithf "Configfile '%s' is required to initialize the cluster. Use 'ClusterManagement config --cluster \"%s\" upload --file %s --filepath <path>' to upload a file." path cluster path
+        | _ -> ()
+
 module ClusterInfo =
     open StoragePath
 
     type SimpleClusterInfo =
         { Name : string; Path : string; }
     let getClosedClusters () =
-        Directory.EnumerateFiles(!storagePath |> ensureAndReturnDir, "*" + extension)
+        Directory.EnumerateFiles(storagePath |> ensureAndReturnDir, "*" + extension)
         |> Seq.map (fun f ->
             { Name = Path.GetFileNameWithoutExtension f; Path = f })
         

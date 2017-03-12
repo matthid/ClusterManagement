@@ -70,7 +70,7 @@ for n in d.Nodes |> Seq.sortBy (fun n -> match n.Type with Storage.NodeType.Prim
   
 runDocker "network create --subnet 10.0.0.0/24 --driver overlay --attachable --opt encrypted swarm-net"
     |> ignore
-//let res = runDocker "service create --replicas 1 --name clustermanagement --network swarm-net matthid/clustermanagement serveconfig"
+
 
 //TODO: Test if current configuration 'just works' (consul node on every machine)
 // if not -> deploy as swarm (see above)

@@ -209,7 +209,7 @@ let handleArgs (argv:string array) =
                     1
                     
             | Some (Config configRes) ->
-                checkDocker () |> Async.RunSynchronously 
+                checkDocker () |> Async.RunSynchronously
                 match configRes.TryGetSubCommand() with
                 | Some (ConfigArgs.Upload uploadArgs) ->
                     //uploadArgs
@@ -280,6 +280,7 @@ let handleArgs (argv:string array) =
                 | Some (ConfigArgs.List listArgs) ->
                     let clusterName = listArgs.TryGetResult <@ ListConfigArgs.Cluster @>
                     let includeValues = listArgs.Contains <@ ListConfigArgs.IncludeValues @>
+                    let includeFiles = listArgs.Contains <@ ListConfigArgs.IncludeFiles @>
                     let clusters =
                         match clusterName with
                         | Some name -> [ name ]
@@ -302,11 +303,18 @@ let handleArgs (argv:string array) =
                         let toks = ClusterConfig.getTokens cc
                         for tok in toks do
                             formatPrintT tok.Name tok.Value c
+                            
+
+                        if includeFiles then              
+                            for f in ConfigStorage.getFiles c do
+                                formatPrintT f "<file>" c
+                                    
+
                         Storage.closeClusterWithStoredSecret c
                     0
                 | _ ->
                     printfn "Please specify a subcommand."
-                    printfn "%s" (parser.PrintUsage())
+                    printfn "%s" (configRes.Parser.PrintUsage())
                     1
             | Some (Provision res) ->
                 checkDocker () |> Async.RunSynchronously 
@@ -316,11 +324,18 @@ let handleArgs (argv:string array) =
                 Cluster.provision clusterName nodeName nodeType
                 |> Async.RunSynchronously
                 0
-            | Some (Deploy res) ->
+            | Some (Run res) ->
                 checkDocker () |> Async.RunSynchronously 
-                let script = res.GetResult <@ DeployArgs.Script @>
-                let clusterName = res.GetResult <@ DeployArgs.Cluster @>
+                let script = res.GetResult <@ RunArgs.Script @>
+                let clusterName = res.GetResult <@ RunArgs.Cluster @>
                 Deploy.deploy clusterName script restArgs
+                0
+            | Some (Service res) ->
+                checkDocker () |> Async.RunSynchronously 
+                raise <| NotImplementedException "not implemented"
+                //let script = res.GetResult <@ RunArgs.Script @>
+                //let clusterName = res.GetResult <@ RunArgs.Cluster @>
+                //Deploy.deploy clusterName script restArgs
                 0
             | Some (Export res) ->
                 checkDocker () |> Async.RunSynchronously 
@@ -332,9 +347,43 @@ let handleArgs (argv:string array) =
                 // TODO: make sure to import flocker-container as well
                 raise <| NotImplementedException "not implemented"
                 0
-            | Some (ServeConfig res) ->
-                ServeConfig.startServer ()
-                0
+            | Some (Internal internalRes) ->
+                match internalRes.TryGetSubCommand() with
+                | Some (ServeConfig res) ->
+                    ServeConfig.startServer ()
+                    0
+                | Some (DeployConfig res) ->
+                    // Upload stuff from /config to http://clustermanagement/v1/config-files/
+                    let basePath = "/config"
+                    let files =
+                        System.IO.Directory.GetFiles(basePath, "*", System.IO.SearchOption.AllDirectories)
+                        |> Seq.map (fun s -> s.Substring (basePath.Length + 1))
+                        |> Seq.toList
+                    use client = new System.Net.Http.HttpClient()
+                    for f in files do
+                        let uri = "http://clustermanagement/v1/config-files/" + f
+                        let fileName = Path.GetFileName f
+                        let fileNameWithoutExtension = Path.GetFileNameWithoutExtension f
+                        printfn "Uploading '%s' to '%s'" f uri
+                        let requestContent = new System.Net.Http.MultipartFormDataContent()
+                        let bytes = File.ReadAllBytes (Path.Combine (basePath, f))
+                        let fileContent = new System.Net.Http.ByteArrayContent(bytes)
+                        //fileContent.Headers.ContentType <-
+                        //    System.Net.Http.Headers.MediaTypeHeaderValue.Parse("")
+                        requestContent.Add(fileContent, fileNameWithoutExtension, fileName)
+                        let result = 
+                            client.PutAsync(uri, requestContent) 
+                            |> Async.AwaitTask
+                            |> Async.RunSynchronously
+                        let res = result.Content.ReadAsStringAsync().Result
+                        if not result.IsSuccessStatusCode then
+                            eprintfn "%s" res
+                            result.EnsureSuccessStatusCode() |> ignore
+                    0
+                | _ ->
+                    printfn "Please specify a subcommand."
+                    printfn "%s" (internalRes.Parser.PrintUsage())
+                    1
             | _ ->
                 printfn "Please specify a subcommand."
                 printfn "%s" (parser.PrintUsage())

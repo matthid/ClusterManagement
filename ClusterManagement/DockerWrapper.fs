@@ -109,10 +109,11 @@ module DockerWrapper =
         if Env.isContainerized then
             if System.IO.Path.IsPathRooted(path) then
                 // look into /host
+                raise <| System.NotImplementedException "Using full paths and paths going outside the working directory is not supported jet."
                 "/host" + path
             else
-                // append to /workDir
-                System.IO.Path.Combine("/workDir", path.Replace("\\", "/"))
+                // append to /workDir (we can leave it relative)
+                path.Replace("\\", "/")
         else
             path
 

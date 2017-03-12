@@ -23,8 +23,8 @@ ClusterManagement
   <div class="span6">
     <div class="well well-small" id="nuget">
       The ClusterManagement tool can be <a href="https://hub.docker.com/r/matthid/clustermanagement/">used immediately with docker</a>:
-      <pre>PS> docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v C:\MyProjects\MyInfrastructure\clustercgf:/clustercfg -v "$pwd:/workdir" -ti matthid/clustermanagement --help</pre>
-      <pre>$   docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v C:\MyProjects\MyInfrastructure\clustercgf:/clustercfg -v "`pwd`:/workdir" -ti matthid/clustermanagement --help</pre>
+      <pre>PS> docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$pwd:/workdir" -ti matthid/clustermanagement --help</pre>
+      <pre>$   docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "`pwd`:/workdir" -ti matthid/clustermanagement --help</pre>
     </div>
   </div>
   <div class="span1"></div>
@@ -133,7 +133,7 @@ This command can be used for a lot of scenarios:
 ClusterManagement is basically a wrapper around `docker` and `docker-machine`.
 It understands and manages [docker-swarm](https://www.docker.com/products/docker-swarm), [flocker](https://clusterhq.com/flocker/introduction/), [vault](https://www.vaultproject.io/) and [consul](https://www.consul.io/).
 
-ClusterManagement will manage two folders in your "C:\MyProjects\MyInfrastructure\clustercgf" folder.
+ClusterManagement will manage two folders in your "./clustercgf" folder.
  * .cm
    This contains the cluster configurations and is encrypted. This way you can add this folder to your repository and keep it safe.
  * .cm-temp

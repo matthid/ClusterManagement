@@ -181,12 +181,14 @@ type ConfigGetArgs =
 type ListConfigArgs =
     | [<AltCommandLine("-c")>] Cluster of string
     | [<AltCommandLine("-v")>] IncludeValues
+    | [<AltCommandLine("-f")>] IncludeFiles
   with
     interface IArgParserTemplate with
         member this.Usage = 
             match this with
             | Cluster _ -> "The name of the cluster for filtering config values. If none is given we show the configurations for all clusters we have access to."
             | IncludeValues _ -> "Print values as well."
+            | IncludeFiles _ -> "Print available files as well."
 
 type ConfigCopyArgs =
     | [<Mandatory>] [<AltCommandLine("-s")>] Source of string
@@ -256,7 +258,7 @@ type ProvisionArgs =
             | Cluster _ -> "The name of the current cluster."
             | NodeType _ -> "The type of the node. Default: Worker"
 
-type DeployArgs =
+type RunArgs =
     | [<AltCommandLine("-c")>] [<Mandatory>] Cluster of string
     | [<Mandatory>] Script of string
     | [<AltCommandLine("--")>] Rest of string list
@@ -264,9 +266,23 @@ type DeployArgs =
     interface IArgParserTemplate with
         member this.Usage = 
             match this with
-            | Script  _ -> "The deployment script for the software."
+            | Script  _ -> "The script to execute."
             | Cluster _ -> "The name of the current cluster."
             | Rest _ -> "The arguments for the script."
+
+type ServiceArgs =
+    | [<CliPrefix(CliPrefix.None)>] Add of ParseResults<ClusterArgs>
+    | [<CliPrefix(CliPrefix.None)>] Backup of ParseResults<ClusterArgs>
+    | [<CliPrefix(CliPrefix.None)>] Restore of ParseResults<ClusterArgs>
+    | [<AltCommandLine("-c")>] [<Mandatory>] Cluster of string
+  with
+    interface IArgParserTemplate with
+        member this.Usage = 
+            match this with
+            | Add  _ -> "Add a service to the cluster."
+            | Backup _ -> "backup an existing service."
+            | Restore _ -> "Restore a service from the given backup."
+            | Cluster _ -> "the cluster to operate on"
 
 type ExportArgs =
     | [<AltCommandLine("-c")>] [<Mandatory>] Cluster of string
@@ -302,6 +318,24 @@ type ServeConfigArgs =
             match this with
             | ConsulAddress _ -> "The consul server to connect to."
 
+type DeployConfigArgs =
+    | [<AltCommandLine("-c")>] Dummy of string
+  with
+    interface IArgParserTemplate with
+        member this.Usage = 
+            match this with
+            | Dummy _ -> "The name of the cluster for filtering config values. If none is given we show the configurations for all clusters we have access to."
+
+type InternalArgs =
+    | [<CliPrefix(CliPrefix.None)>] ServeConfig of ParseResults<ServeConfigArgs>
+    | [<CliPrefix(CliPrefix.None)>] DeployConfig of ParseResults<DeployConfigArgs>
+  with
+    interface IArgParserTemplate with
+        member this.Usage = 
+            match this with
+            | ServeConfig _ -> "INTERNAL: Start a simple webserver which deploys a list of config-file tokens, which can be easily consumed by a bash script."
+            | DeployConfig _ -> "INTERNAL: Deploy the configuration files to the cluster"
+
 type MyArgs =
     | Version
     | [<AltCommandLine("-v")>] Verbose
@@ -311,10 +345,11 @@ type MyArgs =
     | [<AltCommandLine("docker-machine")>] [<CliPrefix(CliPrefix.None)>] DockerMachine of ParseResults<DockerMachineArgs>
     | [<CliPrefix(CliPrefix.None)>] Config of ParseResults<ConfigArgs>
     | [<CliPrefix(CliPrefix.None)>] Provision of ParseResults<ProvisionArgs>
-    | [<CliPrefix(CliPrefix.None)>] Deploy of ParseResults<DeployArgs>
+    | [<CliPrefix(CliPrefix.None)>] Run of ParseResults<RunArgs>
+    | [<CliPrefix(CliPrefix.None)>] Service of ParseResults<ServiceArgs>
     | [<CliPrefix(CliPrefix.None)>] Export of ParseResults<ExportArgs>
     | [<CliPrefix(CliPrefix.None)>] Import of ParseResults<ImportArgs>
-    | [<CliPrefix(CliPrefix.None)>] ServeConfig of ParseResults<ServeConfigArgs>
+    | [<CliPrefix(CliPrefix.None)>] Internal of ParseResults<InternalArgs>
   with
     interface IArgParserTemplate with
         member this.Usage = 
@@ -327,7 +362,8 @@ type MyArgs =
             | Config _ -> "Operate on cluster configuration."
             | DockerMachine _ -> "Run docker-machine on a given cluster."
             | Provision _ -> "Provision machines on the cluster. You normally don't need to execute these commands manually."
-            | Deploy _ -> "Deploy Software into a cluster with the given deployment script."
+            | Run _ -> "Run a given deployment/backup/restore script on the cluster."
+            | Service _ -> "Deploy Software into a cluster with the given deployment script."
             | Export _ -> "Export the current cluster."
             | Import _ -> "Import a given exported cluster."
-            | ServeConfig _ -> "Start a simple webserver which deploys a list of config-file tokens, which can be easily consumed by a bash script."
+            | Internal _ -> "INTERNAL: some internal commands used by clustermanagement itself."
