@@ -39,6 +39,16 @@ module DockerWrapper =
     let internal getFirstInspectJson json =
         let json = InspectJson.Load(new System.IO.StringReader(json))
         json.[0]
+    
+    type InspectMount = { Name :string option; Source: string; Destination: string; Driver : string option}
+    type Inspect =
+        { Id : string; Name : string; Mounts : InspectMount list }
+
+    let parseInspect json =
+        let tp = getFirstInspectJson json
+        let parseMount (m:InspectJson.Mount) =
+            { Name = m.Name; Source = m.Source; Destination = m.Destination; Driver = m.Driver }
+        {Id = tp.Id; Name= tp.Name; Mounts = tp.Mounts |> Seq.map parseMount |> Seq.toList }
 
     let ensureWorking() =
       async { 
