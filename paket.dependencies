@@ -12,7 +12,8 @@ nuget NUnit
 nuget Unquote
 nuget FSharp.Compiler.Service
 nuget Suave
-nuget System.Net.Http
+// NuGet package with higher version doesn't support mono apparently
+nuget System.Net.Http 4.0.0
 
 github matthid/Yaaf.FSharp.Scripting src/source/Yaaf.FSharp.Scripting/YaafFSharpScripting.fs
 

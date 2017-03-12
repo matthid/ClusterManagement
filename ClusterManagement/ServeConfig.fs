@@ -7,6 +7,26 @@ open Suave
 open Suave.Operators
 module ServeConfig =
 
+    module TempDirs =
+        open System.IO
+        // As we run in docker we don't care about crashes -> files will be deleted
+        let private cleanupDirs = new System.Collections.Generic.List<_>()
+        let private cleanup() =
+            let now = DateTime.UtcNow
+            for (dir, date) as t in cleanupDirs |> Seq.toList do
+                if date + TimeSpan.FromMinutes 10.0 < now then
+                    Directory.Delete(dir, true)
+                    cleanupDirs.Remove t |> ignore
+                    
+        let writeTempFile fileName bytes =
+            cleanup()
+            let tmpDir = Path.GetTempFileName()
+            File.Delete (tmpDir)
+            Directory.CreateDirectory (tmpDir) |> ignore
+            cleanupDirs.Add(tmpDir, DateTime.UtcNow)
+            let tmpFile = Path.Combine(tmpDir, fileName)
+            File.WriteAllBytes(tmpFile, bytes)
+            tmpFile
 
     type ConsulGetJson = FSharp.Data.JsonProvider<"consul-get-sample.json">
     let app =
@@ -17,6 +37,7 @@ module ServeConfig =
             >=> (fun ctx -> 
                     async {
                         let file = ctx.request.files.Head
+                        // curl http://consul:8500/v1/kv/yaaf/config/tokens?recurse=true
                         let! loadAsync = 
                             ConsulGetJson.AsyncLoad ("http://consul:8500/v1/kv/yaaf/config/tokens?recurse=true")
                         let tokens =
@@ -31,28 +52,40 @@ module ServeConfig =
             >=> Suave.Writers.setMimeType "application/text; charset=utf-8"
             >=> (fun ctx -> 
                     async {
-                        let file = ctx.request.files.Head
-                        let filePath = ctx.request.url.PathAndQuery.Substring("/v1/config-files/".Length)
-                        let bytes = System.IO.File.ReadAllBytes file.tempFilePath
-                        let data = Convert.ToBase64String(bytes)
-                        let request =
-                            sprintf """[ { "KV": { "Verb": "set", "Key": "/yaaf/config/files/%s", "Value": "%s" } } ]""" 
-                                filePath data
-                        use client = new HttpClient()
-                        let! result = client.PutAsync("http://consul:8500/v1/txn", new StringContent(request)) |> Async.AwaitTask
-                        let! res = result.Content.ReadAsStringAsync()
-                        if not result.IsSuccessStatusCode then
-                            eprintfn "Consul responded: %s" res
-                        result.EnsureSuccessStatusCode() |> ignore
-                        return! Successful.OK "life is good." ctx
+                        match ctx.request.files with
+                        | [ file ] ->
+                            
+                            let filePath = ctx.request.url.PathAndQuery.Substring("/v1/config-files/".Length)
+                            let bytes = System.IO.File.ReadAllBytes file.tempFilePath
+                            let data = Convert.ToBase64String(bytes)
+                            let request =
+                                sprintf """[ { "KV": { "Verb": "set", "Key": "yaaf/config/files/%s", "Value": "%s" } } ]""" 
+                                    filePath data
+                            let client = new HttpClient()
+                            try
+                                // curl -H 'Content-Type: application/json' -X PUT -d '[ {"KV": { "Verb": "set", "Key": "yaaf/config/files/ssl/cacert.pem", "Value": "dGVzdA==" } } ]' http://consul:8500/v1/txn
+                                let! result = client.PutAsync("http://consul:8500/v1/txn", new StringContent(request)) |> Async.AwaitTask
+                                let! res = result.Content.ReadAsStringAsync()
+                                if not result.IsSuccessStatusCode then
+                                    eprintfn "Consul responded: %s" res
+                                result.EnsureSuccessStatusCode() |> ignore
+                                return! Successful.OK "life is good." ctx
+                            finally
+                                try
+                                    client.Dispose()
+                                with e ->
+                                    eprintfn "Error while disposing 'client': %O" e
+                        | _ ->
+                            return! RequestErrors.BAD_REQUEST (sprintf "expected exactly one file, but got %d." ctx.request.files.Length) ctx
+                            
                     })
-            Filters.GET 
+            Filters.GET // test with: curl http://clustermanagement/v1/config-files/ssl/cacert.pem
             >=> Suave.Filters.pathStarts "/v1/config-files/"
             >=> Suave.Writers.setMimeType "application/text; charset=utf-8"
             >=> (fun ctx -> 
                     async {
                         let filePath = ctx.request.url.PathAndQuery.Substring("/v1/config-files/".Length)
-                        
+                        let fileName = System.IO.Path.GetFileName filePath
                         let! loadAsync = 
                             ConsulGetJson.AsyncLoad (sprintf "http://consul:8500/v1/kv/yaaf/config/files/%s" filePath)
                         
@@ -62,9 +95,8 @@ module ServeConfig =
                             |> Seq.tryHead
                         match tokens with
                         | Some bytes ->
-                            let tmpFile = System.IO.Path.GetTempFileName()
-                            System.IO.File.WriteAllBytes(tmpFile, bytes)
-                            return! Files.sendFile filePath true ctx
+                            let tmpFile = TempDirs.writeTempFile fileName bytes
+                            return! Files.file tmpFile ctx
                         | None ->
                             return! Suave.RequestErrors.NOT_FOUND "the given file is not available" ctx
                     })
@@ -88,7 +120,27 @@ module ServeConfig =
                             return! Suave.ServerErrors.SERVICE_UNAVAILABLE "the cluster name is not available" ctx
                     })
         ]
+    let mimeTypes =
+        Writers.defaultMimeTypesMap
+        @@ (function | _ -> Writers.createMimeType "application/octet-stream" false)
+    let mylogging level getMsg =
+        let (msg:Logging.Message) = getMsg level
+        printfn "msg: %A" msg
+
     let config =
-        { defaultConfig with bindings = [ HttpBinding.create HTTP IPAddress.Any 80us ] }
+        { defaultConfig with 
+            bindings = [ HttpBinding.create HTTP IPAddress.Any 80us ]
+            mimeTypesMap = mimeTypes
+            logger = { new Logging.Logger with
+                        member __.name = [|"mylogger"|]
+                        member __.log level getMsg =
+                            async {
+                                mylogging level getMsg
+                            } 
+                        member __.logWithAck level getMsg =
+                            async {
+                                mylogging level getMsg
+                            }}
+        }
     let startServer () =
         startWebServer config app

@@ -3,28 +3,22 @@ FRAMEWORK: NET461
 NUGET
   remote: https://www.nuget.org/api/v2
     Argu (3.7)
-    FSharp.Compiler.Service (8.0)
+    FSharp.Compiler.Service (11.0.6)
       System.Collections.Immutable (>= 1.2)
       System.Reflection.Metadata (>= 1.4.1-beta-24227-04)
     FSharp.Configuration (0.6.4)
-    FSharp.Core (4.0.0.1)
+    FSharp.Core (4.1.0.2)
+      System.ValueTuple (>= 4.3)
     FSharp.Data (2.3.2)
     Mono.Posix (4.0)
-    NUnit (3.5)
-    Suave (2.0)
+    NUnit (3.6.1)
+    Suave (2.0.4)
       FSharp.Core (>= 4.0.0.1)
     System.Collections.Immutable (1.3.1)
-    System.Net.Http (4.3.1)
-      System.Security.Cryptography.X509Certificates (>= 4.3)
+    System.Net.Http (4.0)
     System.Reflection.Metadata (1.4.2)
       System.Collections.Immutable (>= 1.3.1)
-    System.Security.Cryptography.Algorithms (4.3)
-      System.Security.Cryptography.Primitives (>= 4.3)
-    System.Security.Cryptography.Encoding (4.3)
-    System.Security.Cryptography.Primitives (4.3)
-    System.Security.Cryptography.X509Certificates (4.3)
-      System.Security.Cryptography.Algorithms (>= 4.3)
-      System.Security.Cryptography.Encoding (>= 4.3)
+    System.ValueTuple (4.3)
     Unquote (3.1.2)
 GITHUB
   remote: matthid/Yaaf.FSharp.Scripting
@@ -32,4 +26,4 @@ GITHUB
 GROUP Build
 NUGET
   remote: https://www.nuget.org/api/v2
-    FAKE (4.48)
+    FAKE (4.53)

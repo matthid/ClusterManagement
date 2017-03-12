@@ -359,26 +359,38 @@ let handleArgs (argv:string array) =
                         System.IO.Directory.GetFiles(basePath, "*", System.IO.SearchOption.AllDirectories)
                         |> Seq.map (fun s -> s.Substring (basePath.Length + 1))
                         |> Seq.toList
-                    use client = new System.Net.Http.HttpClient()
-                    for f in files do
-                        let uri = "http://clustermanagement/v1/config-files/" + f
-                        let fileName = Path.GetFileName f
-                        let fileNameWithoutExtension = Path.GetFileNameWithoutExtension f
-                        printfn "Uploading '%s' to '%s'" f uri
-                        let requestContent = new System.Net.Http.MultipartFormDataContent()
-                        let bytes = File.ReadAllBytes (Path.Combine (basePath, f))
-                        let fileContent = new System.Net.Http.ByteArrayContent(bytes)
-                        //fileContent.Headers.ContentType <-
-                        //    System.Net.Http.Headers.MediaTypeHeaderValue.Parse("")
-                        requestContent.Add(fileContent, fileNameWithoutExtension, fileName)
-                        let result = 
-                            client.PutAsync(uri, requestContent) 
-                            |> Async.AwaitTask
-                            |> Async.RunSynchronously
-                        let res = result.Content.ReadAsStringAsync().Result
-                        if not result.IsSuccessStatusCode then
-                            eprintfn "%s" res
-                            result.EnsureSuccessStatusCode() |> ignore
+                    ( let client = new System.Net.Http.HttpClient()
+                      try
+                        for f in files do
+                            let uri = "http://clustermanagement/v1/config-files/" + f
+                            let fileName = Path.GetFileName f
+                            let fileNameWithoutExtension = Path.GetFileNameWithoutExtension f
+                            printfn "Uploading '%s' to '%s'" f uri
+                            let requestContent = new System.Net.Http.MultipartFormDataContent()
+                            requestContent.Add(new System.Net.Http.StringContent(fileNameWithoutExtension), fileNameWithoutExtension)
+                            use fstream = File.OpenRead(Path.Combine (basePath, f))
+                            let fileContent = new System.Net.Http.StreamContent(fstream)
+                            fileContent.Headers.ContentType <-
+                                System.Net.Http.Headers.MediaTypeHeaderValue.Parse "application/octet-stream"
+                            fileContent.Headers.ContentDisposition <-
+                                new System.Net.Http.Headers.ContentDispositionHeaderValue(
+                                    "form-data",
+                                    Name = fileNameWithoutExtension,
+                                    FileName = fileName)
+                            requestContent.Add(fileContent)
+                            let result = 
+                                client.PutAsync(uri, requestContent) 
+                                |> Async.AwaitTask
+                                |> Async.RunSynchronously
+                            let res = result.Content.ReadAsStringAsync().Result
+                            if not result.IsSuccessStatusCode then
+                                eprintfn "%s" res
+                                result.EnsureSuccessStatusCode() |> ignore
+                      finally
+                        try
+                            client.Dispose()
+                        with e ->
+                            eprintfn "Error while disposing 'client': %O" e)
                     0
                 | _ ->
                     printfn "Please specify a subcommand."
