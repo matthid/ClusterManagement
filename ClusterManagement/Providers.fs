@@ -95,7 +95,7 @@ aws <command> *)
             let securityGroupId = res.Driver.SecurityGroupIds.[0]
             let! res = 
                 runAws clusterConfig (sprintf "ec2 authorize-security-group-ingress --group-id %s --protocol all --port 0-65535 --source-group %s" securityGroupId securityGroupId)
-                |> Proc.redirectOutput
+                |> CreateProcess.redirectOutput
                 |> Proc.startAndAwait
             let output = Proc.getResultIgnoreExitCode res
             if output.Error.Contains "InvalidPermission.Duplicate" || output.Output.Contains "InvalidPermission.Duplicate" then

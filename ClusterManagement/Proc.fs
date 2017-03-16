@@ -268,7 +268,8 @@ type StreamSpecification =
 
 type ProcessOutput = { Output : string; Error : string }
 type CreateProcess<'TRes> =
-    {   Command : Command
+    private {   
+        Command : Command
         WorkingDirectory : string option
         Environment : (string * string) list option
         StandardInput : StreamSpecification 
@@ -310,8 +311,8 @@ type CreateProcess<'TRes> =
             |> Option.iter (Seq.iter (fun (key, value) -> setEnv key value))
         p.WindowStyle <- ProcessWindowStyle.Hidden
         p
-type CreateProcess () =
-    static member FromCommand command =
+module CreateProcess  =
+    let fromCommand command =
         {   Command = command
             WorkingDirectory = None
             // Problem: Environment not allowed when using ShellCommand
@@ -324,11 +325,11 @@ type CreateProcess () =
             StandardError = Inherit
             GetRawOutput = None
             GetResult = fun _ -> () }
-    static member FromRawWindowsCommandLine command windowsCommandLine =
-        CreateProcess.FromCommand <| RawCommand(command, Arguments.OfWindowsCommandLine windowsCommandLine)
-    static member FromRawCommand command args =
-        CreateProcess.FromCommand <| RawCommand(command, Arguments.OfArgs args)
-    static member Map f x =
+    let fromRawWindowsCommandLine command windowsCommandLine =
+        fromCommand <| RawCommand(command, Arguments.OfWindowsCommandLine windowsCommandLine)
+    let fromRawCommand command args =
+        fromCommand <| RawCommand(command, Arguments.OfArgs args)
+    let map f x =
         {   Command = x.Command
             WorkingDirectory = x.WorkingDirectory
             Environment = x.Environment
@@ -337,7 +338,7 @@ type CreateProcess () =
             StandardError = x.StandardError
             GetRawOutput = x.GetRawOutput
             GetResult = (fun () -> f (x.GetResult()) ) }
-    static member OfStartInfo (p:System.Diagnostics.ProcessStartInfo) =
+    let ofStartInfo (p:System.Diagnostics.ProcessStartInfo) =
         {   Command = if p.UseShellExecute then ShellCommand p.FileName else RawCommand(p.FileName, Arguments.OfStartInfo p.Arguments)
             WorkingDirectory = if System.String.IsNullOrWhiteSpace p.WorkingDirectory then None else Some p.WorkingDirectory
             Environment = 
@@ -353,6 +354,62 @@ type CreateProcess () =
             GetResult = fun _ -> ()
         } 
     
+    let interceptStream target (s:StreamSpecification) =
+        match s with
+        | Inherit -> Inherit
+        | UseStream (close, stream) ->
+            let combined = Stream.CombineWrite(stream, target)
+            UseStream(close, combined)
+        | CreatePipe pipe ->
+            CreatePipe (StreamRef.Map (fun s -> Stream.InterceptStream(s, target)) pipe)
+    
+    let copyRedirectedProcessOutputsToStandardOutputs (c:CreateProcess<_>)=
+        { c with
+            StandardOutput =
+                let stdOut = System.Console.OpenStandardOutput()
+                interceptStream stdOut c.StandardOutput
+            StandardError =
+                let stdErr = System.Console.OpenStandardError()
+                interceptStream stdErr c.StandardError }
+    
+    let withWorkingDirectory workDir (c:CreateProcess<_>)=
+        { c with
+            WorkingDirectory = Some workDir }
+            
+    let withEnvironment env (c:CreateProcess<_>)=
+        { c with
+            Environment = Some env }
+    let withStandardOutput stdOut (c:CreateProcess<_>)=
+        { c with
+            StandardOutput = stdOut }
+    let withStandardError stdErr (c:CreateProcess<_>)=
+        { c with
+            StandardError = stdErr }
+    let withStandardInput stdIn (c:CreateProcess<_>)=
+        { c with
+            StandardInput = stdIn }
+
+    let redirectOutput (c:CreateProcess<_>) =
+        match c.GetRawOutput with
+        | None ->
+            let outMem = new MemoryStream()
+            let errMem = new MemoryStream()
+        
+            let getOutput () =
+                outMem.Position <- 0L
+                errMem.Position <- 0L
+                let stdErr = (new StreamReader(errMem)).ReadToEnd()
+                let stdOut = (new StreamReader(outMem)).ReadToEnd()
+                { Output = stdOut; Error = stdErr }
+
+            { c with
+                StandardOutput = UseStream (false, outMem)
+                StandardError = UseStream (false, errMem)
+                GetRawOutput = Some getOutput }
+                |> map (fun _ -> getOutput())
+        | Some f ->
+            c |> map (fun _ -> f ())
+
 type ProcessResults<'a> =
   { ExitCode : int
     CommandLine : string 
@@ -488,52 +545,6 @@ module Proc =
     let getResultIgnoreExitCode (r:ProcessResults<_>) =
         r.Result
 
-    let interceptStream target (s:StreamSpecification) =
-        match s with
-        | Inherit -> Inherit
-        | UseStream (close, stream) ->
-            let combined = Stream.CombineWrite(stream, target)
-            UseStream(close, combined)
-        | CreatePipe pipe ->
-            CreatePipe (StreamRef.Map (fun s -> Stream.InterceptStream(s, target)) pipe)
-    
-    let copyRedirectedProcessOutputsToStandardOutputs (c:CreateProcess<_>)=
-        { c with
-            StandardOutput =
-                let stdOut = System.Console.OpenStandardOutput()
-                interceptStream stdOut c.StandardOutput
-            StandardError =
-                let stdErr = System.Console.OpenStandardError()
-                interceptStream stdErr c.StandardError }
-    
-    let withWorkingDirectory workDir (c:CreateProcess<_>)=
-        { c with
-            WorkingDirectory = Some workDir }
-            
-    let withEnvironment env (c:CreateProcess<_>)=
-        { c with
-            Environment = Some env }
-
-    let redirectOutput (c:CreateProcess<_>) =
-        match c.GetRawOutput with
-        | None ->
-            let outMem = new MemoryStream()
-            let errMem = new MemoryStream()
-        
-            let getOutput () =
-                outMem.Position <- 0L
-                errMem.Position <- 0L
-                let stdErr = (new StreamReader(errMem)).ReadToEnd()
-                let stdOut = (new StreamReader(outMem)).ReadToEnd()
-                { Output = stdOut; Error = stdErr }
-
-            { c with
-                StandardOutput = UseStream (false, outMem)
-                StandardError = UseStream (false, errMem)
-                GetRawOutput = Some getOutput }
-                |> CreateProcess.Map (fun _ -> getOutput())
-        | Some f ->
-            c |> CreateProcess.Map (fun _ -> f ())
             
 
     let ensureExitCodeGetResult (r:ProcessResults<_>) =
@@ -644,7 +655,7 @@ module Proc =
         let outMem = new MemoryStream()
         let errMem = new MemoryStream()
         let c =
-            { CreateProcess.OfStartInfo p with
+            { CreateProcess.ofStartInfo p with
                 StandardOutput =
                     if p.RedirectStandardOutput then
                         if printStdout then 

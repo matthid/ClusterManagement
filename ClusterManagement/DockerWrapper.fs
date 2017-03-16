@@ -29,13 +29,13 @@ module DockerWrapper =
             |> Seq.map (fun kv -> string kv.Key, string kv.Value)
             |> Seq.toList
 
-        CreateProcess.FromCommand (RawCommand (!dockerPath, args))
-        |> Proc.withWorkingDirectory (System.IO.Directory.GetCurrentDirectory())
-        |> Proc.withEnvironment env
+        CreateProcess.fromCommand (RawCommand (!dockerPath, args))
+        |> CreateProcess.withWorkingDirectory (System.IO.Directory.GetCurrentDirectory())
+        |> CreateProcess.withEnvironment env
     let startAndAwait args =
         args
         |> createProcess
-        |> Proc.redirectOutput
+        |> CreateProcess.redirectOutput
         |> Proc.startAndAwait
     // otherwise compiler needs inspect-example for projects referencing this assembly :(
     type internal InspectJson = FSharp.Data.JsonProvider< "inspect-example.json" >
@@ -56,7 +56,7 @@ module DockerWrapper =
 
     let ensureWorking() =
       async { 
-        do! CreateProcess.FromRawWindowsCommandLine !dockerPath "version"
+        do! CreateProcess.fromRawWindowsCommandLine !dockerPath "version"
             |> Proc.start
             |> Async.AwaitTask
             |> Async.map Proc.ensureExitCodeGetResult
@@ -81,7 +81,7 @@ module DockerWrapper =
                     [| "inspect"; id |]
                     |> Arguments.OfArgs
                     |> createProcess
-                    |> Proc.redirectOutput
+                    |> CreateProcess.redirectOutput
                     |> Proc.startAndAwait
                     |> Async.map (Proc.ensureExitCodeGetResult)
                     |> Async.map (fun o -> o.Output)
@@ -143,15 +143,15 @@ module DockerWrapper =
         sprintf "run --rm -v \"%O:/flockercerts\" hugecannon/flocker-cli %s" (mapHostDir path) args
         |> Arguments.OfWindowsCommandLine
         |> createProcess
-        |> Proc.redirectOutput
-        |> CreateProcess.Map (fun output -> output.Output)
+        |> CreateProcess.redirectOutput
+        |> CreateProcess.map (fun output -> output.Output)
       
     let flockerctl args =
         sprintf "run --net=host --rm -e FLOCKER_CERTS_PATH=\"/etc/flocker\" -e FLOCKER_USER=\"flockerctl\" -e FLOCKER_CONTROL_SERVICE=\"${CLUSTER_NAME}-01\" -e CONTAINERIZED=1 -v /:/host -v $PWD:/pwd:z clusterhq/uft:latest flockerctl %s" args
         |> Arguments.OfWindowsCommandLine
         |> createProcess
-        |> Proc.redirectOutput
-        |> CreateProcess.Map (fun output -> output.Output)
+        |> CreateProcess.redirectOutput
+        |> CreateProcess.map (fun output -> output.Output)
 
     //let getNodes () =
     //  async {

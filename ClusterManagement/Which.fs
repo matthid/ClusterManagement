@@ -9,8 +9,8 @@ module Which =
                 failwithf "Please install git bash on default location for this program to work! ('%s' not found)" cygPath
 
             let! result = 
-                CreateProcess.FromRawCommand cygPath [| "-w"; fileName |]
-                |> Proc.redirectOutput
+                CreateProcess.fromRawCommand cygPath [| "-w"; fileName |]
+                |> CreateProcess.redirectOutput
                 |> Proc.start
                 |> Async.AwaitTask
                 |> Async.map Proc.ensureExitCodeGetResult
@@ -32,8 +32,8 @@ module Which =
     let getToolPath toolName =
       async {
         let! toolPath =
-            CreateProcess.FromRawCommand "/usr/bin/which" [| toolName |]
-            |> Proc.redirectOutput
+            CreateProcess.fromRawCommand "/usr/bin/which" [| toolName |]
+            |> CreateProcess.redirectOutput
             |> resolveCygwinPathInRawCommand
             |> Async.bind (Proc.start >> Async.AwaitTask)
             |> Async.map (Proc.ensureExitCodeWithMessageGetResult (sprintf "Tool '%s' was not found with which! Make sure it is installed." toolName))
