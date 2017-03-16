@@ -105,7 +105,7 @@ type VolumeDeleteArgs =
         member this.Usage = 
             match this with
             | Cluster _ -> "The name of the cluster to delete the volume for."
-            | Name _ -> "The name of the Volume to delete."
+            | Name _ -> "The dataset-id of the Volume to delete."
             
 type VolumeCloneArgs =
     | SourceCluster of string
@@ -326,15 +326,35 @@ type DeployConfigArgs =
             match this with
             | Dummy _ -> "The name of the cluster for filtering config values. If none is given we show the configurations for all clusters we have access to."
 
+type OpenClusterArgs =
+    | [<AltCommandLine("-c")>] Cluster of string
+  with
+    interface IArgParserTemplate with
+        member this.Usage = 
+            match this with
+            | Cluster _ -> "The name of the cluster we want to open."
+
+type CloseClusterArgs =
+    | [<AltCommandLine("-c")>] Cluster of string
+  with
+    interface IArgParserTemplate with
+        member this.Usage = 
+            match this with
+            | Cluster _ -> "The name of the cluster we want to close."
+
 type InternalArgs =
     | [<CliPrefix(CliPrefix.None)>] ServeConfig of ParseResults<ServeConfigArgs>
     | [<CliPrefix(CliPrefix.None)>] DeployConfig of ParseResults<DeployConfigArgs>
+    | [<CliPrefix(CliPrefix.None)>] OpenCluster of ParseResults<OpenClusterArgs>
+    | [<CliPrefix(CliPrefix.None)>] CloseCluster of ParseResults<CloseClusterArgs>
   with
     interface IArgParserTemplate with
         member this.Usage = 
             match this with
             | ServeConfig _ -> "INTERNAL: Start a simple webserver which deploys a list of config-file tokens, which can be easily consumed by a bash script."
             | DeployConfig _ -> "INTERNAL: Deploy the configuration files to the cluster"
+            | OpenCluster _ -> "INTERNAL: Decrypt a cluster file and leave it in the temp folder (only for debugging)"
+            | CloseCluster _ -> "INTERNAL: Encrypt a cluster folder and delete the temp folder (only for debugging)"
 
 type MyArgs =
     | Version

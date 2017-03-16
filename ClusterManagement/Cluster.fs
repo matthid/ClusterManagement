@@ -79,7 +79,9 @@ module Cluster =
         if not (File.Exists clusterKey) || not (File.Exists clusterCrt) then
             if File.Exists clusterKey then File.Delete clusterKey
             if File.Exists clusterCrt then File.Delete clusterCrt
-            let! res = DockerWrapper.flockerca config (Proc.argvToCommandLine [ "initialize"; clusterName])
+            let! res = 
+                DockerWrapper.flockerca config (Arguments.OfArgs [| "initialize"; clusterName|]).ToWindowsCommandLine
+                |> Proc.startAndAwait
             if not (File.Exists clusterKey) || not (File.Exists clusterCrt) then
                 failwithf "flockerca failed to create '%s' or '%s'" clusterKeyName clusterCrtName
         
@@ -108,13 +110,17 @@ module Cluster =
             let nodeName = Storage.getNodeNameByDir dir
             initFlocker dir (fun flockerDir ->
               async {
-                let! res = DockerWrapper.flockerca flockerDir (sprintf "create-control-certificate %s" nodeName)
+                let! res = 
+                    DockerWrapper.flockerca flockerDir (sprintf "create-control-certificate %s" nodeName)
+                    |> Proc.startAndAwait
                 handle (Path.Combine(flockerDir, sprintf "control-%s.crt" nodeName)) (Path.Combine(flockerDir, "control-service.crt"))
                 handle (Path.Combine(flockerDir, sprintf "control-%s.key" nodeName)) (Path.Combine(flockerDir, "control-service.key"))
                 
                 deleteIfExists (Path.Combine(flockerDir, "flockerctl.crt"))
                 deleteIfExists (Path.Combine(flockerDir, "flockerctl.key"))
-                let! res = DockerWrapper.flockerca flockerDir "create-api-certificate flockerctl"
+                let! res = 
+                    DockerWrapper.flockerca flockerDir "create-api-certificate flockerctl"
+                    |> Proc.startAndAwait
                 ()  
             })
             
@@ -125,14 +131,20 @@ module Cluster =
             // We always need the docker plugin and an agent...
             initFlocker dir (fun flockerDir ->
               async {
-                let! stdOut = DockerWrapper.flockerca flockerDir "create-node-certificate"
+                let! stdOut = 
+                    DockerWrapper.flockerca flockerDir "create-node-certificate"
+                    |> Proc.startAndAwait
+                    |> Async.map Proc.ensureExitCodeGetResult
                 let genName = stdOut.Split([| ' ' |]).[1].Split([|'.'|]).[0]
                 handle (Path.Combine(flockerDir, sprintf "%s.crt" genName)) (Path.Combine(flockerDir, "node.crt"))
                 handle (Path.Combine(flockerDir, sprintf "%s.key" genName)) (Path.Combine(flockerDir, "node.key"))
                 
                 deleteIfExists (Path.Combine(flockerDir, "plugin.crt"))
                 deleteIfExists (Path.Combine(flockerDir, "plugin.key"))
-                let! res = DockerWrapper.flockerca flockerDir "create-api-certificate plugin"
+                let! res = 
+                    DockerWrapper.flockerca flockerDir "create-api-certificate plugin"
+                    |> Proc.startAndAwait
+                    |> Async.map Proc.ensureExitCodeGetResult
 
                 ()  
             })
@@ -168,13 +180,19 @@ module Cluster =
 
         if Env.isVerbose then printfn "stopping services."
         for service in [ "flocker-control-service"; "flocker-control-agent"; "flocker-dataset-agent"; "flocker-docker-plugin" ] do
-            let! res = DockerWrapper.run (sprintf "kill %s" service)
+            let! res =
+                [|"kill"; service|]
+                |> Arguments.OfArgs
+                |> DockerWrapper.startAndAwait
             if res.ExitCode <> 0 then
-                eprintfn "Failed (%d) to kill container %s.\nOutput: %s\nError: %s" res.ExitCode service res.Output.StdOut res.Output.StdErr
+                eprintfn "Failed (%d) to kill container %s.\nOutput: %s\nError: %s" res.ExitCode service res.Result.Output res.Result.Error
 
-            let! res = DockerWrapper.run (sprintf "rm %s" service)
+            let! res =
+                [|"rm"; service|]
+                |> Arguments.OfArgs
+                |> DockerWrapper.startAndAwait
             if res.ExitCode <> 0 then
-                eprintfn "Failed (%d) to remove container %s.\nOutput: %s\nError: %s" res.ExitCode service res.Output.StdOut res.Output.StdErr
+                eprintfn "Failed (%d) to remove container %s.\nOutput: %s\nError: %s" res.ExitCode service res.Result.Output res.Result.Error
                 
         if Env.isVerbose then printfn "setup config."
         let flockerDir = Path.Combine (hostRoot, "etc", "flocker")
@@ -209,20 +227,35 @@ module Cluster =
         if Env.isVerbose then printfn "starting services."
         // Start flocker control service
         if nodeName.EndsWith "master-01" then
-            let! res = DockerWrapper.run (sprintf "run --name=flocker-control-volume -v /var/lib/flocker %s:%s true" DockerImages.flockerControlService DockerImages.flockerTag)
+            let! res = 
+                (sprintf "run --name=flocker-control-volume -v /var/lib/flocker %s:%s true" DockerImages.flockerControlService DockerImages.flockerTag)
+                |> Arguments.OfWindowsCommandLine
+                |> DockerWrapper.startAndAwait
             if res.ExitCode <> 0 then
-                eprintfn "Failed (%d) to create volume container, it might already exist.\nOutput: %s\nError: %s" res.ExitCode res.Output.StdOut res.Output.StdErr
+                eprintfn "Failed (%d) to create volume container, it might already exist.\nOutput: %s\nError: %s" res.ExitCode res.Result.Output res.Result.Error
 
-            let! res = DockerWrapper.run (sprintf "run --restart=always -d --net=host -v /etc/flocker:/etc/flocker --volumes-from=flocker-control-volume --name=flocker-control-service %s:%s" DockerImages.flockerControlService DockerImages.flockerTag)
-            res |> Proc.failOnExitCode |> ignore
+            do! 
+                (sprintf "run --restart=always -d --net=host -v /etc/flocker:/etc/flocker --volumes-from=flocker-control-volume --name=flocker-control-service %s:%s" DockerImages.flockerControlService DockerImages.flockerTag)
+                |> Arguments.OfWindowsCommandLine
+                |> DockerWrapper.startAndAwait
+                |> Async.map (Proc.ensureExitCodeGetResult)
+                |> Async.Ignore
 
         // Flocker container agent
-        let! res = DockerWrapper.run (sprintf "run --restart=always -d --net=host --privileged -v /flocker:/flocker -v /:/host -v /etc/flocker:/etc/flocker -v /dev:/dev --name=flocker-dataset-agent %s:%s" DockerImages.flockerDatasetAgent DockerImages.flockerTag)
-        res |> Proc.failOnExitCode |> ignore
+        do!
+            (sprintf "run --restart=always -d --net=host --privileged -v /flocker:/flocker -v /:/host -v /etc/flocker:/etc/flocker -v /dev:/dev --name=flocker-dataset-agent %s:%s" DockerImages.flockerDatasetAgent DockerImages.flockerTag)
+            |> Arguments.OfWindowsCommandLine
+            |> DockerWrapper.startAndAwait
+            |> Async.map (Proc.ensureExitCodeGetResult)
+            |> Async.Ignore
 
         // flocker docker plugin
-        let! res = DockerWrapper.run (sprintf "run --restart=always -d --net=host -v /etc/flocker:/etc/flocker -v /run/docker:/run/docker --name=flocker-docker-plugin %s:%s" DockerImages.flockerDockerPlugin DockerImages.flockerTag)
-        res |> Proc.failOnExitCode |> ignore
+        do!
+            (sprintf "run --restart=always -d --net=host -v /etc/flocker:/etc/flocker -v /run/docker:/run/docker --name=flocker-docker-plugin %s:%s" DockerImages.flockerDockerPlugin DockerImages.flockerTag)
+            |> Arguments.OfWindowsCommandLine
+            |> DockerWrapper.startAndAwait
+            |> Async.map (Proc.ensureExitCodeGetResult)
+            |> Async.Ignore
 
         if Env.isVerbose then printfn "machine successfully provisioned."
         

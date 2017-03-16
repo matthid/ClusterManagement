@@ -22,17 +22,21 @@ module DockerWrapper =
     let dockerPath = ref "docker"
     let baseMounts = ref []
     
-    let runExt opts args =
-        Proc.startProcessCustomizedWithOpts opts (fun p ->
-            p |> Proc.defaultCustomize (System.IO.Directory.GetCurrentDirectory()) !dockerPath args
-            let setEnv key var =
-                p.EnvironmentVariables.[key] <- var
-            for entry in System.Environment.GetEnvironmentVariables() |> Seq.cast<System.Collections.DictionaryEntry> do
-                setEnv (entry.Key :?> string) (entry.Value :?> string))
-    
-    let run args = runExt Proc.RedirectOptions.Default args
-    let runInteractive args = runExt Proc.RedirectOptions.Interactive args
-    
+    let createProcess args =
+        let env = 
+            System.Environment.GetEnvironmentVariables() 
+            |> Seq.cast<System.Collections.DictionaryEntry> 
+            |> Seq.map (fun kv -> string kv.Key, string kv.Value)
+            |> Seq.toList
+
+        CreateProcess.FromCommand (RawCommand (!dockerPath, args))
+        |> Proc.withWorkingDirectory (System.IO.Directory.GetCurrentDirectory())
+        |> Proc.withEnvironment env
+    let startAndAwait args =
+        args
+        |> createProcess
+        |> Proc.redirectOutput
+        |> Proc.startAndAwait
     // otherwise compiler needs inspect-example for projects referencing this assembly :(
     type internal InspectJson = FSharp.Data.JsonProvider< "inspect-example.json" >
     
@@ -52,10 +56,11 @@ module DockerWrapper =
 
     let ensureWorking() =
       async { 
-        do!
-            Proc.startProcess !dockerPath "version"
-            |> Async.map (Proc.failOnExitCode)
-            |> Async.Ignore
+        do! CreateProcess.FromRawWindowsCommandLine !dockerPath "version"
+            |> Proc.start
+            |> Async.AwaitTask
+            |> Async.map Proc.ensureExitCodeGetResult
+
         // Find our own container-id and save all binds for later mapping.
         if System.IO.File.Exists("/proc/self/cgroup") then
             let searchStr = ":/docker/"
@@ -73,9 +78,14 @@ module DockerWrapper =
             | Some id ->
                 Env.isContainerized <- true
                 let! stdOut =
-                    run (sprintf "inspect %s" id) 
-                    |> Async.map (Proc.failOnExitCode)
-                    |> Async.map (Proc.getStdOut)
+                    [| "inspect"; id |]
+                    |> Arguments.OfArgs
+                    |> createProcess
+                    |> Proc.redirectOutput
+                    |> Proc.startAndAwait
+                    |> Async.map (Proc.ensureExitCodeGetResult)
+                    |> Async.map (fun o -> o.Output)
+
                 let first = getFirstInspectJson stdOut
                 let binds =
                     first.HostConfig.Binds
@@ -129,33 +139,27 @@ module DockerWrapper =
 
 
     let flockerca flockercerts args =
-      async {
         let path = System.IO.Path.GetFullPath (flockercerts)
-        let args = sprintf "run --rm -v \"%O:/flockercerts\" hugecannon/flocker-cli %s" (mapHostDir path) args
-        let! res = run args
-        return
-            res 
-            |> Proc.failOnExitCode
-            |> Proc.getStdOut
-      }
+        sprintf "run --rm -v \"%O:/flockercerts\" hugecannon/flocker-cli %s" (mapHostDir path) args
+        |> Arguments.OfWindowsCommandLine
+        |> createProcess
+        |> Proc.redirectOutput
+        |> CreateProcess.Map (fun output -> output.Output)
       
     let flockerctl args =
-      async {
-        let args = sprintf "run --net=host --rm -e FLOCKER_CERTS_PATH=\"/etc/flocker\" -e FLOCKER_USER=\"flockerctl\" -e FLOCKER_CONTROL_SERVICE=\"${CLUSTER_NAME}-01\" -e CONTAINERIZED=1 -v /:/host -v $PWD:/pwd:z clusterhq/uft:latest flockerctl %s" args
-        let! res = run args
-        return
-            res 
-            |> Proc.failOnExitCode
-            |> Proc.getStdOut
-      }
+        sprintf "run --net=host --rm -e FLOCKER_CERTS_PATH=\"/etc/flocker\" -e FLOCKER_USER=\"flockerctl\" -e FLOCKER_CONTROL_SERVICE=\"${CLUSTER_NAME}-01\" -e CONTAINERIZED=1 -v /:/host -v $PWD:/pwd:z clusterhq/uft:latest flockerctl %s" args
+        |> Arguments.OfWindowsCommandLine
+        |> createProcess
+        |> Proc.redirectOutput
+        |> CreateProcess.Map (fun output -> output.Output)
 
-    let getNodes () =
-      async {
-        let! res = flockerctl "list-nodes"
-        // node_hash=`echo $res | grep 127.0.0.1 | cut -d " " -f 1`
-
-        ()
-      }
+    //let getNodes () =
+    //  async {
+    //    let! res = flockerctl "list-nodes"
+    //    // node_hash=`echo $res | grep 127.0.0.1 | cut -d " " -f 1`
+    //
+    //    ()
+    //  }
       
     type DockerServiceReplicas = { Current : int; Requested : int}
     type DockerService =

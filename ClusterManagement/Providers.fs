@@ -81,9 +81,11 @@ aws <command> *)
         let keyId = forceConfig "AWS_ACCESS_KEY_ID"
         let secret = forceConfig "AWS_ACCESS_KEY_SECRET"
         let region = forceConfig "AWS_REGION"
-        DockerWrapper.run 
-            (sprintf "run --env AWS_ACCESS_KEY_ID=%s --env AWS_SECRET_ACCESS_KEY=%s --env AWS_DEFAULT_REGION=%s garland/aws-cli-docker aws %s"
+        
+        (sprintf "run --env AWS_ACCESS_KEY_ID=%s --env AWS_SECRET_ACCESS_KEY=%s --env AWS_DEFAULT_REGION=%s garland/aws-cli-docker aws %s"
             keyId secret region command)
+            |> Arguments.OfWindowsCommandLine
+            |> DockerWrapper.createProcess
 
     let allowInternalNetworking clusterName clusterConfig =
       async {
@@ -91,11 +93,15 @@ aws <command> *)
         | AWS ->
             let! res = DockerMachine.inspect clusterName "master-01"
             let securityGroupId = res.Driver.SecurityGroupIds.[0]
-            let! res  = runAws clusterConfig (sprintf "ec2 authorize-security-group-ingress --group-id %s --protocol all --port 0-65535 --source-group %s" securityGroupId securityGroupId)
-            if res.Output.StdErr.Contains "InvalidPermission.Duplicate" || res.Output.StdOut.Contains "InvalidPermission.Duplicate" then
+            let! res = 
+                runAws clusterConfig (sprintf "ec2 authorize-security-group-ingress --group-id %s --protocol all --port 0-65535 --source-group %s" securityGroupId securityGroupId)
+                |> Proc.redirectOutput
+                |> Proc.startAndAwait
+            let output = Proc.getResultIgnoreExitCode res
+            if output.Error.Contains "InvalidPermission.Duplicate" || output.Output.Contains "InvalidPermission.Duplicate" then
                 if Env.isVerbose then eprintfn "Ignoring InvalidPermission.Duplicate error while editing security group."
             else
-                res |> Proc.failOnExitCode |> ignore
+                res |> Proc.ensureExitCodeGetResult |> ignore
         | Generic ->
             printfn "Make sure all machines can access each other via hostnames!"
       }

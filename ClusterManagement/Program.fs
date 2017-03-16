@@ -174,8 +174,10 @@ let handleArgs (argv:string array) =
                         | Some s -> s
                         | None -> 1024L * 1024L * 1024L
                     
+                    Storage.openClusterWithStoredSecret clusterName
                     Volume.create clusterName name size
                     |> Async.RunSynchronously
+                    Storage.closeClusterWithStoredSecret clusterName
 
                     0
                 | Some (VolumeArgs.Clone _) ->
@@ -185,8 +187,10 @@ let handleArgs (argv:string array) =
                     let clusterName = deleteArgs.GetResult <@ VolumeDeleteArgs.Cluster @>
                     let name = deleteArgs.GetResult <@ VolumeDeleteArgs.Name @>
                     
+                    Storage.openClusterWithStoredSecret clusterName
                     Volume.destroy clusterName name
                     |> Async.RunSynchronously
+                    Storage.closeClusterWithStoredSecret clusterName
 
                     0
                 | None ->
@@ -199,7 +203,7 @@ let handleArgs (argv:string array) =
                 | Some (name) ->
                     Storage.openClusterWithStoredSecret name
                     let res =
-                        DockerMachine.runInteractive name (Proc.argvToCommandLine restArgs)
+                        DockerMachine.runInteractive name (restArgs |> Arguments.OfArgs).ToWindowsCommandLine
                         |> Async.RunSynchronously
                     Storage.closeClusterWithStoredSecret name
                     0
@@ -351,6 +355,16 @@ let handleArgs (argv:string array) =
                 match internalRes.TryGetSubCommand() with
                 | Some (ServeConfig res) ->
                     ServeConfig.startServer ()
+                    0
+                | Some (OpenCluster res) ->
+                    checkDocker () |> Async.RunSynchronously 
+                    let clusterName = res.GetResult <@ OpenClusterArgs.Cluster @>
+                    Storage.openClusterWithStoredSecret clusterName
+                    0
+                | Some (CloseCluster res) ->
+                    checkDocker () |> Async.RunSynchronously 
+                    let clusterName = res.GetResult <@ CloseClusterArgs.Cluster @>
+                    Storage.closeClusterWithStoredSecret clusterName
                     0
                 | Some (DeployConfig res) ->
                     // Upload stuff from /config to http://clustermanagement/v1/config-files/
