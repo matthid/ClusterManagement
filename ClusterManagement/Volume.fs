@@ -4,9 +4,15 @@ module Volume =
     let flockerctl cluster node flockerCtlArgs =
       async {
         let res =
-            DockerMachine.runOnNode cluster node
-                (sprintf "sudo docker run --net=host --rm -e FLOCKER_CERTS_PATH=/etc/flocker -e FLOCKER_USER=flockerctl -e FLOCKER_CONTROL_SERVICE=\"%s-master-01\" -e CONTAINERIZED=1 -v /:/host -v $PWD:/pwd:z clusterhq/uft:latest flockerctl %s"
-                cluster flockerCtlArgs)
+            DockerWrapper.createProcess
+                (sprintf "run --net=host --rm -e FLOCKER_CERTS_PATH=/etc/flocker -e FLOCKER_USER=flockerctl -e FLOCKER_CONTROL_SERVICE=\"%s-master-01\" -e CONTAINERIZED=1 -v /:/host -v $PWD:/pwd:z clusterhq/uft:latest flockerctl %s"
+                    cluster flockerCtlArgs
+                 |> Arguments.OfWindowsCommandLine)
+            |> CreateProcess.redirectOutput
+            |> DockerMachine.runDockerOnNode cluster node
+            |> Proc.startRaw
+            |> Async.AwaitTask
+
         return! res
       }
     type FlockerNode =
@@ -32,8 +38,8 @@ module Volume =
     let listNodes cluster =
       async {
         let! res = flockerctl cluster "master-01" "list-nodes"
-        res |> Proc.failOnExitCode |> ignore
-        return parseListNodes res.Output.StdOut
+        res |> Proc.ensureExitCodeGetResult |> ignore
+        return parseListNodes res.Result.Output
       }
 
     type FlockerVolume =
@@ -89,14 +95,14 @@ module Volume =
     let list cluster =
       async {
         let! res = flockerctl cluster "master-01" "list"
-        res |> Proc.failOnExitCode |> ignore
-        return parseList res.Output.StdOut
+        res |> Proc.ensureExitCodeGetResult |> ignore
+        return parseList res.Result.Output
       } 
       
     let destroy cluster datasetId =
       async {
         let! res = flockerctl cluster "master-01" (sprintf "destroy -d %s" datasetId)
-        res |> Proc.failOnExitCode |> ignore
+        res |> Proc.ensureExitCodeGetResult |> ignore
       } 
     
     let create cluster name (size:int64) =
@@ -121,7 +127,7 @@ module Volume =
                 | None ->
                     failwithf "Could not get a flocker node!"
             let! res = flockerctl cluster "master-01" (sprintf "create -n %s -s %d -m \"name=%s,cluster=%s\"" !nodeId size name cluster)
-            res |> Proc.failOnExitCode |> ignore
+            res |> Proc.ensureExitCodeGetResult |> ignore
       }
 
     let clone fromCluster toCluster =

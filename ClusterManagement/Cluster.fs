@@ -133,8 +133,8 @@ module Cluster =
               async {
                 let! stdOut = 
                     DockerWrapper.flockerca flockerDir "create-node-certificate"
+                    |> CreateProcess.ensureExitCode
                     |> Proc.startAndAwait
-                    |> Async.map Proc.ensureExitCodeGetResult
                 let genName = stdOut.Split([| ' ' |]).[1].Split([|'.'|]).[0]
                 handle (Path.Combine(flockerDir, sprintf "%s.crt" genName)) (Path.Combine(flockerDir, "node.crt"))
                 handle (Path.Combine(flockerDir, sprintf "%s.key" genName)) (Path.Combine(flockerDir, "node.key"))
@@ -143,8 +143,8 @@ module Cluster =
                 deleteIfExists (Path.Combine(flockerDir, "plugin.key"))
                 let! res = 
                     DockerWrapper.flockerca flockerDir "create-api-certificate plugin"
+                    |> CreateProcess.ensureExitCode
                     |> Proc.startAndAwait
-                    |> Async.map Proc.ensureExitCodeGetResult
 
                 ()  
             })
@@ -183,17 +183,20 @@ module Cluster =
             let! res =
                 [|"kill"; service|]
                 |> Arguments.OfArgs
-                |> DockerWrapper.startAndAwait
-            if res.ExitCode <> 0 then
-                eprintfn "Failed (%d) to kill container %s.\nOutput: %s\nError: %s" res.ExitCode service res.Result.Output res.Result.Error
+                |> DockerWrapper.createProcess
+                |> CreateProcess.redirectOutput
+                |> CreateProcess.warnOnExitCode "Failed to kill container"
+                |> Proc.startAndAwait
 
             let! res =
                 [|"rm"; service|]
                 |> Arguments.OfArgs
-                |> DockerWrapper.startAndAwait
-            if res.ExitCode <> 0 then
-                eprintfn "Failed (%d) to remove container %s.\nOutput: %s\nError: %s" res.ExitCode service res.Result.Output res.Result.Error
-                
+                |> DockerWrapper.createProcess
+                |> CreateProcess.redirectOutput
+                |> CreateProcess.warnOnExitCode  "Failed to remove container"
+                |> Proc.startAndAwait
+            
+            ()   
         if Env.isVerbose then printfn "setup config."
         let flockerDir = Path.Combine (hostRoot, "etc", "flocker")
         if Directory.Exists flockerDir then
@@ -230,31 +233,35 @@ module Cluster =
             let! res = 
                 (sprintf "run --name=flocker-control-volume -v /var/lib/flocker %s:%s true" DockerImages.flockerControlService DockerImages.flockerTag)
                 |> Arguments.OfWindowsCommandLine
-                |> DockerWrapper.startAndAwait
-            if res.ExitCode <> 0 then
-                eprintfn "Failed (%d) to create volume container, it might already exist.\nOutput: %s\nError: %s" res.ExitCode res.Result.Output res.Result.Error
-
+                |> DockerWrapper.createProcess
+                |> CreateProcess.redirectOutput
+                |> CreateProcess.warnOnExitCode "Failed to create volume container, it might already exist"
+                |> Proc.startAndAwait
+            
             do! 
                 (sprintf "run --restart=always -d --net=host -v /etc/flocker:/etc/flocker --volumes-from=flocker-control-volume --name=flocker-control-service %s:%s" DockerImages.flockerControlService DockerImages.flockerTag)
                 |> Arguments.OfWindowsCommandLine
-                |> DockerWrapper.startAndAwait
-                |> Async.map (Proc.ensureExitCodeGetResult)
+                |> DockerWrapper.createProcess
+                |> CreateProcess.ensureExitCode
+                |> Proc.startAndAwait
                 |> Async.Ignore
 
         // Flocker container agent
         do!
             (sprintf "run --restart=always -d --net=host --privileged -v /flocker:/flocker -v /:/host -v /etc/flocker:/etc/flocker -v /dev:/dev --name=flocker-dataset-agent %s:%s" DockerImages.flockerDatasetAgent DockerImages.flockerTag)
             |> Arguments.OfWindowsCommandLine
-            |> DockerWrapper.startAndAwait
-            |> Async.map (Proc.ensureExitCodeGetResult)
+            |> DockerWrapper.createProcess
+            |> CreateProcess.ensureExitCode
+            |> Proc.startAndAwait
             |> Async.Ignore
 
         // flocker docker plugin
         do!
             (sprintf "run --restart=always -d --net=host -v /etc/flocker:/etc/flocker -v /run/docker:/run/docker --name=flocker-docker-plugin %s:%s" DockerImages.flockerDockerPlugin DockerImages.flockerTag)
             |> Arguments.OfWindowsCommandLine
-            |> DockerWrapper.startAndAwait
-            |> Async.map (Proc.ensureExitCodeGetResult)
+            |> DockerWrapper.createProcess
+            |> CreateProcess.ensureExitCode
+            |> Proc.startAndAwait
             |> Async.Ignore
 
         if Env.isVerbose then printfn "machine successfully provisioned."
@@ -301,7 +308,10 @@ module Cluster =
             
             if Env.isVerbose then printfn "create '%s' docker machine." machine
 
-            let! res = DockerMachine.run clusterName (sprintf "status \"%s\"" machine)
+            let! res = 
+                DockerMachine.createProcess clusterName ([|"status"; machine|] |> Arguments.OfArgs)
+                |> Proc.startRaw
+                |> Async.AwaitTask
             if res.ExitCode = 0 then // already exists
                 eprintfn "Machine '%s' seems to be already existing, reusing..." machine
             else
@@ -314,7 +324,9 @@ module Cluster =
             match t with
             | Storage.NodeType.PrimaryMaster ->
                 do! Providers.allowInternalNetworking clusterName cc
-                let! ip = DockerMachine.getEth0Ip clusterName nodeName
+                let! ip =
+                    DockerMachine.getEth0Ip clusterName nodeName
+                    |> Proc.startAndAwait
                 primaryMasterIp <- ip
             | _ when System.Object.ReferenceEquals(primaryMasterIp, null) ->
                 failwith "primary master needs to be initialized first!"
@@ -322,19 +334,26 @@ module Cluster =
  
             // Write '__CLUSTER_NAME__-master-01' into /etc/hosts
             let hostname = sprintf "%s-master-01" clusterName
-            let! res = 
-                DockerMachine.run clusterName 
+            do!
+                DockerMachine.createProcess clusterName 
                     (sprintf "ssh %s sudo bash -c \\\"if grep -q '%s' /etc/hosts; then echo master-01 reference exists; else echo '%s %s' >> /etc/hosts; fi\\\"" 
-                    machine  hostname primaryMasterIp hostname)
-            res |> Proc.failOnExitCode |> ignore
+                    machine  hostname primaryMasterIp hostname
+                     |> Arguments.OfWindowsCommandLine)
+                |> CreateProcess.ensureExitCode
+                |> Proc.startAndAwait
 
             // provision machine / flocker
             if Env.isVerbose then printfn "upload provision config '%s'." machine
-            let! res = DockerMachine.runInteractive clusterName (sprintf "ssh %s sudo rm -rf /yaaf-provision && sudo mkdir /yaaf-provision && sudo chmod 777 /yaaf-provision" machine)
-            res |> Proc.failWithMessage "failed to prepare folders" |> ignore
+            do!
+                DockerMachine.createProcess clusterName 
+                    (sprintf "ssh %s sudo rm -rf /yaaf-provision && sudo mkdir /yaaf-provision && sudo chmod 777 /yaaf-provision" machine
+                     |> Arguments.OfWindowsCommandLine)
+                |> CreateProcess.ensureExitCodeWithMessage "failed to prepare folders"
+                |> Proc.startAndAwait
             
-            let! res = DockerMachine.runInteractive clusterName (sprintf "scp -r \"%s\" %s:/yaaf-provision/machine" dir machine)
-            res |> Proc.failWithMessage "failed to run scp" |> ignore
+            do! DockerMachine.createProcess clusterName (sprintf "scp -r \"%s\" %s:/yaaf-provision/machine" dir machine |> Arguments.OfWindowsCommandLine)
+                |> CreateProcess.ensureExitCodeWithMessage "failed to run scp"
+                |> Proc.startAndAwait
 
             // Execute clustermanagement provision --cluster test --nodeName node --nodeType Master
             if Env.isVerbose then printfn "provision '%s'." machine
@@ -345,11 +364,14 @@ module Cluster =
                 | Storage.NodeType.Worker -> "worker"
                 | Storage.NodeType.PrimaryMaster
                 | Storage.NodeType.Master -> "master"
-            let! res = 
-                DockerMachine.runInteractive clusterName 
+            do!
+                DockerMachine.createProcess clusterName 
                     (sprintf "ssh %s sudo docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v /:/host-root %s %s provision --cluster %s --nodename %s --nodetype %s" 
-                    machine DockerImages.clusterManagement (if Env.isVerbose then "-v" else "") clusterName nodeName nodeType)
-            res |> Proc.failWithMessage "failed to provision machine." |> ignore
+                        machine DockerImages.clusterManagement (if Env.isVerbose then "-v" else "")
+                        clusterName nodeName nodeType
+                     |> Arguments.OfWindowsCommandLine)
+                |> CreateProcess.ensureExitCodeWithMessage "failed to provision machine."
+                |> Proc.startAndAwait
 
         ClusterConfig.setClusterInitialized clusterName true
         Storage.closeClusterWithStoredSecret clusterName
@@ -384,28 +406,38 @@ module Cluster =
             let killBlockingServices () =
               async {
                 // shutdown all services.
-                let! servicesOut = DockerMachine.runDockerOnNode clusterName "master-01" "service ls"
-                let services = servicesOut |> Proc.failOnExitCode |> Proc.getStdOut |> DockerWrapper.parseServices
+                let! services = 
+                    DockerWrapper.listServices ()
+                    |> DockerMachine.runDockerOnNode clusterName "master-01"
+                    |> Proc.startAndAwait
+
                 for service in services do
-                    let! exitOut = DockerMachine.runDockerOnNode clusterName "master-01" (sprintf "service rm %s" service.Id)
-                    exitOut |> Proc.failOnExitCode |> ignore
+                    do! DockerWrapper.removeService service.Id
+                        |> DockerMachine.runDockerOnNode clusterName "master-01"
+                        |> CreateProcess.ensureExitCode
+                        |> Proc.startAndAwait
 
                 for n in d.Nodes do
-                    let! containers = DockerMachine.runDockerPs clusterName n.Name
+                    let! containers = DockerMachine.runDockerPs clusterName n.Name |> Proc.startAndAwait
                     for container in containers do
-                        let! inspect = DockerMachine.runDockerInspect clusterName n.Name container.ContainerId
+                        let! inspect = DockerMachine.runDockerInspect clusterName n.Name container.ContainerId |> Proc.startAndAwait
                         if inspect.Mounts
                            |> Seq.exists (fun m -> m.Driver = Some "flocker") then
                             match inspect.Config.Labels.ComDockerSwarmServiceName with
                             | Some service ->
                                 // might have been deleted already (above), but just to be safe...
-                                let! res = DockerMachine.runDockerOnNode clusterName n.Name (sprintf "service rm %s" service) 
-                                let stdOut = res.Output.StdErr
+                                let! res = 
+                                    DockerWrapper.removeService service
+                                    |> DockerMachine.runDockerOnNode clusterName n.Name
+                                    |> CreateProcess.redirectOutput
+                                    |> Proc.startRaw
+                                    |> Async.AwaitTask
+                                let stdOut = res.Result.Error
                                 if stdOut.Contains "not found" then ()
-                                else res |> Proc.failOnExitCode |> ignore
+                                else res |> Proc.ensureExitCodeGetResult |> ignore
                             | None ->
-                                do! DockerMachine.runDockerKill clusterName n.Name container.ContainerId
-                                do! DockerMachine.runDockerRemove clusterName n.Name container.ContainerId
+                                do! DockerMachine.runDockerKill clusterName n.Name container.ContainerId |> Proc.startAndAwait
+                                do! DockerMachine.runDockerRemove clusterName n.Name container.ContainerId |> Proc.startAndAwait
               }
             do! killBlockingServices()
             
@@ -428,14 +460,16 @@ module Cluster =
                 if iter % 120 = 0 then
                     eprintfn "try restarting flocker instances"
                     for n in d.Nodes do
-                        let! containers = DockerMachine.runDockerPs clusterName n.Name
+                        let! containers = DockerMachine.runDockerPs clusterName n.Name |> Proc.startAndAwait
                         for container in containers do
-                            let! inspect = DockerMachine.runDockerInspect clusterName n.Name container.ContainerId
+                            let! inspect = DockerMachine.runDockerInspect clusterName n.Name container.ContainerId |> Proc.startAndAwait
                             if inspect.Name.Contains "flocker-control-service" 
                             || inspect.Name.Contains "flocker-dataset-agent" 
                             || inspect.Name.Contains "flocker-docker-plugin" then
-                                do! DockerMachine.runDockerOnNode clusterName n.Name (sprintf "restart %s" container.ContainerId) 
-                                    |> Async.map Proc.failOnExitCode |> Async.Ignore
+                                do! DockerWrapper.createProcess ([|"restart"; container.ContainerId|] |> Arguments.OfArgs)
+                                    |> DockerMachine.runDockerOnNode clusterName n.Name
+                                    |> CreateProcess.ensureExitCode
+                                    |> Proc.startAndAwait
                     // again try to kill all services/containers
                     do! killBlockingServices()
             
@@ -444,8 +478,9 @@ module Cluster =
 
             // Clear/Delete docker-machines
             for n in d.Nodes do
-                let! res = DockerMachine.run clusterName (sprintf "rm -y \"%s\"" n.MachineName)
-                res |> Proc.failWithMessage "failed to delete a machine!" |> ignore
+                do! DockerMachine.remove clusterName n.MachineName
+                    |> CreateProcess.ensureExitCodeWithMessage "failed to delete a machine!"
+                    |> Proc.startAndAwait
             ClusterConfig.setClusterInitialized clusterName false
 
         Storage.closeClusterWithStoredSecret clusterName

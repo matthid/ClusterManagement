@@ -138,6 +138,8 @@ module StreamExtensions =
                 override x.Dispose(t) = if t then readStream.Dispose()
                 }
 module internal CmdLineParsing =
+    let escapeCommandLineForShell (cmdLine:string) =
+        sprintf "'%s'" (cmdLine.Replace("'", "'\\''"))
     let windowsArgvToCommandLine args =
         let escapeBackslashes (sb:System.Text.StringBuilder) (s:string) (lastSearchIndex:int) =
             // Backslashes must be escaped if and only if they precede a double quote.
@@ -238,6 +240,8 @@ type Arguments =
         { Args = CmdLineParsing.windowsCommandLineToArgv cmd }
     /// This is the reverse of https://msdn.microsoft.com/en-us/library/17w5ykft.aspx
     member x.ToWindowsCommandLine = CmdLineParsing.windowsArgvToCommandLine x.Args
+    member x.ToLinuxShellCommandLine =
+        System.String.Join(" ", x.Args |> Seq.map CmdLineParsing.escapeCommandLineForShell)
     static member OfArgs args = { Args = args }
     static member OfStartInfo cmd =
         Arguments.OfWindowsCommandLine cmd
@@ -267,6 +271,13 @@ type StreamSpecification =
     | CreatePipe of StreamRef // The underlying framework creates pipes already
 
 type ProcessOutput = { Output : string; Error : string }
+type IProcessHook =
+    inherit System.IDisposable
+    abstract member ProcessExited : int -> unit
+    abstract member ParseSuccess : int -> unit
+type ResultGenerator<'TRes> =
+    {   GetRawOutput : unit -> ProcessOutput
+        GetResult : ProcessOutput -> 'TRes }
 type CreateProcess<'TRes> =
     private {   
         Command : Command
@@ -275,8 +286,9 @@ type CreateProcess<'TRes> =
         StandardInput : StreamSpecification 
         StandardOutput : StreamSpecification 
         StandardError : StreamSpecification
+        Setup : unit -> IProcessHook
         GetRawOutput : (unit -> ProcessOutput) option
-        GetResult : unit -> 'TRes
+        GetResult : ProcessOutput -> 'TRes
     }
     member internal x.ToStartInfo =
         let p = new ProcessStartInfo()
@@ -311,7 +323,16 @@ type CreateProcess<'TRes> =
             |> Option.iter (Seq.iter (fun (key, value) -> setEnv key value))
         p.WindowStyle <- ProcessWindowStyle.Hidden
         p
+    member x.CommandLine =
+        match x.Command with
+        | ShellCommand s -> s
+        | RawCommand (f, arg) -> sprintf "%s %s" f arg.ToWindowsCommandLine
 module CreateProcess  =
+    let emptyHook =
+        { new IProcessHook with
+            member x.Dispose () = ()
+            member x.ProcessExited _ = ()
+            member x.ParseSuccess _ = () }
     let fromCommand command =
         {   Command = command
             WorkingDirectory = None
@@ -324,20 +345,13 @@ module CreateProcess  =
             // Problem: Redirection not allowed when using ShellCommand
             StandardError = Inherit
             GetRawOutput = None
-            GetResult = fun _ -> () }
+            GetResult = fun _ -> ()
+            Setup = fun _ -> emptyHook }
     let fromRawWindowsCommandLine command windowsCommandLine =
         fromCommand <| RawCommand(command, Arguments.OfWindowsCommandLine windowsCommandLine)
     let fromRawCommand command args =
         fromCommand <| RawCommand(command, Arguments.OfArgs args)
-    let map f x =
-        {   Command = x.Command
-            WorkingDirectory = x.WorkingDirectory
-            Environment = x.Environment
-            StandardInput = x.StandardInput
-            StandardOutput = x.StandardOutput
-            StandardError = x.StandardError
-            GetRawOutput = x.GetRawOutput
-            GetResult = (fun () -> f (x.GetResult()) ) }
+
     let ofStartInfo (p:System.Diagnostics.ProcessStartInfo) =
         {   Command = if p.UseShellExecute then ShellCommand p.FileName else RawCommand(p.FileName, Arguments.OfStartInfo p.Arguments)
             WorkingDirectory = if System.String.IsNullOrWhiteSpace p.WorkingDirectory then None else Some p.WorkingDirectory
@@ -352,6 +366,7 @@ module CreateProcess  =
             StandardError = if p.RedirectStandardError then CreatePipe StreamRef.Empty else Inherit
             GetRawOutput = None
             GetResult = fun _ -> ()
+            Setup = fun _ -> emptyHook
         } 
     
     let interceptStream target (s:StreamSpecification) =
@@ -375,6 +390,18 @@ module CreateProcess  =
     let withWorkingDirectory workDir (c:CreateProcess<_>)=
         { c with
             WorkingDirectory = Some workDir }
+    let withCommand command (c:CreateProcess<_>)=
+        { c with
+            Command = command }
+
+    let private combine (d1:IProcessHook) (d2:IProcessHook) =
+        { new IProcessHook with
+            member x.Dispose () = d1.Dispose(); d2.Dispose()
+            member x.ProcessExited e = d1.ProcessExited(e); d2.ProcessExited(e)
+            member x.ParseSuccess e = d1.ParseSuccess(e); d2.ParseSuccess(e) }
+    let addSetup f (c:CreateProcess<_>) =
+        { c with
+            Setup = fun _ -> combine (c.Setup()) (f()) }
             
     let withEnvironment env (c:CreateProcess<_>)=
         { c with
@@ -389,6 +416,18 @@ module CreateProcess  =
         { c with
             StandardInput = stdIn }
 
+    let private withResultFuncRaw f x =
+        {   Command = x.Command
+            WorkingDirectory = x.WorkingDirectory
+            Environment = x.Environment
+            StandardInput = x.StandardInput
+            StandardOutput = x.StandardOutput
+            StandardError = x.StandardError
+            GetRawOutput = x.GetRawOutput
+            GetResult = f
+            Setup = x.Setup }
+    let map f x =
+        withResultFuncRaw (x.GetResult >> f) x
     let redirectOutput (c:CreateProcess<_>) =
         match c.GetRawOutput with
         | None ->
@@ -409,10 +448,56 @@ module CreateProcess  =
                 |> map (fun _ -> getOutput())
         | Some f ->
             c |> map (fun _ -> f ())
+    let withResultFunc f (x:CreateProcess<_>) =
+        match x.GetRawOutput with
+        | Some _ -> x |> withResultFuncRaw f
+        | None -> x |> redirectOutput |> withResultFuncRaw f
+         
+    let addOnExited f (r:CreateProcess<_>) =
+        r
+        |> addSetup (fun _ ->
+           { new IProcessHook with
+                member x.Dispose () = ()
+                member x.ProcessExited exitCode =
+                    if exitCode <> 0 then f exitCode
+                member x.ParseSuccess _ = () })
+    let ensureExitCodeWithMessage msg (r:CreateProcess<_>) =
+        r
+        |> addOnExited (fun exitCode ->
+            if exitCode <> 0 then failwith msg)
+            
 
+    let ensureExitCode (r:CreateProcess<_>) =
+        r
+        |> addOnExited (fun exitCode ->
+            if exitCode <> 0 then
+                let msg =
+                    match r.GetRawOutput with
+                    | Some f ->
+                        let output = f()
+                        (sprintf "Process exit code '%d' <> 0. Command Line: %s\nStdOut: %s\nStdErr: %s" exitCode r.CommandLine output.Output output.Error)
+                    | None ->
+                        (sprintf "Process exit code '%d' <> 0. Command Line: %s" exitCode r.CommandLine)
+                failwith msg    
+                )
+    
+    let warnOnExitCode msg (r:CreateProcess<_>) =
+        r
+        |> addOnExited (fun exitCode ->
+            if exitCode <> 0 then
+                let msg =
+                    match r.GetRawOutput with
+                    | Some f ->
+                        let output = f()
+                        (sprintf "%s. exit code '%d' <> 0. Command Line: %s\nStdOut: %s\nStdErr: %s" msg exitCode r.CommandLine output.Output output.Error)
+                    | None ->
+                        (sprintf "%s. exit code '%d' <> 0. Command Line: %s" msg exitCode r.CommandLine)
+                //if Env.isVerbose then
+                eprintfn "%s" msg    
+                )
 type ProcessResults<'a> =
   { ExitCode : int
-    CommandLine : string 
+    CreateProcess : CreateProcess<'a>
     Result : 'a }    
 module Proc =
     // mono sets echo off for some reason, therefore interactive mode doesn't work as expected
@@ -433,8 +518,9 @@ module Proc =
                 else
                     setEchoMethod.Invoke(null, [| b :> obj |]) :?> bool
         else false
-    let start (c:CreateProcess<_>) =
+    let startRaw (c:CreateProcess<_>) =
       async {
+        use hook = c.Setup()
         let p = c.ToStartInfo
         let commandLine = 
             sprintf "%s> \"%s\" %s" p.WorkingDirectory p.FileName p.Arguments
@@ -511,245 +597,64 @@ module Proc =
         if t = delay then
             eprintfn "At least one redirection task did not finish: \nReadErrorTask: %O, ReadOutputTask: %O, RedirectStdInTask: %O" readErrorTask.Status readOutputTask.Status redirectStdInTask.Status
         tok.Cancel()
+        
         // wait for finish -> AwaitTask has a bug which makes it unusable for chanceled tasks.
         // workaround with continuewith
         let! streams = all.ContinueWith (new System.Func<System.Threading.Tasks.Task<Stream[]>, Stream[]> (fun t -> t.Result)) |> Async.AwaitTask
         for s in streams do s.Dispose()
-
         setEcho false |> ignore
-        try
-            let result = c.GetResult ()
-            return { ExitCode = toolProcess.ExitCode; CommandLine = commandLine; Result = result }
-        with e ->
-            let msg =
-                match c.GetRawOutput with
-                | Some f ->
-                    let o = f()
-                    sprintf "Could not parse output from process, StdOutput: %s, StdError %s" o.Output o.Error
-                | None ->
-                    "Could not parse output from process, but RawOutput was not retrieved."
-            return raise <| System.Exception(msg, e)
+        
+        hook.ProcessExited(toolProcess.ExitCode)
+        let o, realResult =
+            match c.GetRawOutput with
+            | Some f -> f(), true
+            | None -> { Output = ""; Error = "" }, false
+
+        let result =
+            try c.GetResult o
+            with e ->
+                let msg =
+                    if realResult then
+                        sprintf "Could not parse output from process, StdOutput: %s, StdError %s" o.Output o.Error
+                    else
+                        "Could not parse output from process, but RawOutput was not retrieved."
+                raise <| System.Exception(msg, e)
+        
+        hook.ParseSuccess toolProcess.ExitCode
+        return { ExitCode = toolProcess.ExitCode; CreateProcess = c; Result = result }
       }
       // Immediate makes sure we set the ref cell before we return the task...
       |> Async.StartImmediateAsTask
     
+    let start c = 
+        async {
+            let! result = startRaw c
+            return result.Result
+        }
+        |> Async.StartImmediateAsTask
+
     /// Convenience method when you immediatly want to await the result of 'start', just note that
     /// when used incorrectly this might lead to race conditions 
     /// (ie if you use StartAsTask and access reference cells in CreateProcess after that returns)
     let startAndAwait c = start c |> Async.AwaitTask
 
     let ensureExitCodeWithMessageGetResult msg (r:ProcessResults<_>) =
-        if r.ExitCode <> 0 then failwith msg
+        let { Setup = f } =
+            { r.CreateProcess with Setup = fun _ -> CreateProcess.emptyHook }
+            |> CreateProcess.ensureExitCodeWithMessage msg
+        let hook = f ()
+        hook.ProcessExited r.ExitCode
         r.Result
 
     let getResultIgnoreExitCode (r:ProcessResults<_>) =
         r.Result
 
-            
-
     let ensureExitCodeGetResult (r:ProcessResults<_>) =
-        match r :> obj with
-        | :? ProcessResults<ProcessOutput> as o ->
-            ensureExitCodeWithMessageGetResult (sprintf "Process exit code '%d' <> 0. Command Line: %s\nStdOut: %s\nStdErr: %s" r.ExitCode r.CommandLine o.Result.Output o.Result.Error) r
-        | _ ->
-            ensureExitCodeWithMessageGetResult (sprintf "Process exit code '%d' <> 0. Command Line: %s, Result: %A" r.ExitCode r.CommandLine r.Result) r
-    
-    
-    [<System.Obsolete("Use createProcess instead")>]
-    type NoOutput = | NotOutput
-    [<System.Obsolete("Use createProcess instead")>]
-    type RedirectedOutput = { StdOut : string; StdErr : string }
-    [<System.Obsolete("Use createProcess instead")>]
-    type StreamOutput = { OutStream : System.IO.Stream; ErrStream : System.IO.Stream }
-    
-    [<System.Obsolete("Use createProcess instead")>]
-    type ProcResult<'TRes> =
-          { ExitCode : int
-            Output : 'TRes
-            CommandLine : string }
-    [<System.Obsolete("Use createProcess instead")>]
-    type AsyncProcResult<'TRes> = Async<ProcResult<'TRes>>
-    
-    [<System.Obsolete("Use createProcess instead")>]
-    type StdInMode =
-        | FixedString of string
-        | Stream of System.IO.Stream
-        | NonInteractive
-        | RedirectStdIn
-    [<System.Obsolete("Use createProcess instead")>]
-    type RedirectionMode =
-        { PrintProcessStdOut:bool; PrintProcessStdErr:bool; StdInMode:StdInMode }
-        static member Default =
-            { PrintProcessStdOut = false; PrintProcessStdErr = false; StdInMode = StdInMode.NonInteractive }
-        /// this almost works like "real" interactive mode, but is no real TTY -> therefore processes will behave differently
-        /// bash needs to be run with -i to work for example.
-        static member RedirectInteractive =
-            { PrintProcessStdOut = true; PrintProcessStdErr = true; StdInMode = StdInMode.RedirectStdIn }
-            
-    [<System.Obsolete("Use createProcess instead")>]
-    type RedirectOptionsP<'TRes> =
-        /// Interactive means all output and errors are already printed to stdout, but are not available here.
-        private | Interactive
-        /// Redirect some streams -> no interation possible for the user
-        | Redirection of RedirectionMode
-        //| Forward of RedirectionMode
-    
-    [<System.Obsolete("Use createProcess instead")>]
-    type RedirectOptions = 
-        static member Interactive = RedirectOptionsP<NoOutput>.Interactive
-        static member Redirection mode =
-            RedirectOptionsP<RedirectedOutput>.Redirection mode
-        static member Default =
-            RedirectOptions.Redirection RedirectionMode.Default
-        static member RedirectInteractive =
-            RedirectOptions.Redirection RedirectionMode.RedirectInteractive
-        //static member Forward mode =
-        //    RedirectOptionsP<StreamOutput>.Forward mode
-        //static member SimpleForward  =
-        //    RedirectOptions.Forward RedirectionMode.Default
-        
-    [<System.Obsolete("Use createProcess instead")>]
-    let private createOut (opts:RedirectOptionsP<'TRes>) stdOut stdErr =
-        let tres = typeof<'TRes>
-        match opts with
-        | Interactive ->
-            if tres = typeof<NoOutput> then
-                NoOutput.NotOutput :> obj :?> 'TRes
-            else
-                failwithf "Cannot return %s as 'TRes when %A" tres.FullName opts
-        | Redirection _ ->
-            if tres = typeof<RedirectedOutput> then
-                { StdOut = stdOut; StdErr = stdErr } :> obj :?> 'TRes
-            else
-                failwithf "Cannot return %s as 'TRes when %A" tres.FullName opts
-        //| Forward _ ->
-        //    if tres = typeof<StreamOutput> then
-        //        { OutStream = outStream; ErrStream = errStream } :> obj :?> 'TRes
-        //    else
-        //        failwithf "Cannot return %s as 'TRes when %A" tres.FullName opts
+        let { Setup = f } =
+            { r.CreateProcess with Setup = fun _ -> CreateProcess.emptyHook }
+            |> CreateProcess.ensureExitCode
+        let hook = f ()
+        hook.ProcessExited r.ExitCode
+        r.Result
 
-        
-    [<System.Obsolete("Use createProcess instead")>]
-    let private startProcessRaw (opts:RedirectOptionsP<'TRes>) (p:ProcessStartInfo) : AsyncProcResult<'TRes> =
-      async {
-
-        let stdInString, printStdout, printStderr =
-            match opts with
-            | Interactive ->
-                p.RedirectStandardInput <- false
-                p.RedirectStandardOutput <- false
-                p.RedirectStandardError <- false
-                null, true, true
-            | Redirection {PrintProcessStdOut = printStdout; PrintProcessStdErr = printStderr; StdInMode = stdInMode} ->
-            //| Forward {PrintProcessStdOut = printStdout; PrintProcessStdErr = printStderr; StdInMode = stdInMode} ->
-                let stdInString =
-                    match stdInMode with
-                    | FixedString s -> s
-                    | _ -> null
-                p.RedirectStandardInput <- not (isNull stdInString)
-                p.RedirectStandardOutput <- true
-                p.RedirectStandardError <- true
-                stdInString, printStdout, printStderr
-        if p.UseShellExecute then
-            p.UseShellExecute <- not (p.RedirectStandardInput ||  p.RedirectStandardOutput || p.RedirectStandardError)
-        let outMem = new MemoryStream()
-        let errMem = new MemoryStream()
-        let c =
-            { CreateProcess.ofStartInfo p with
-                StandardOutput =
-                    if p.RedirectStandardOutput then
-                        if printStdout then 
-                            let stdOut = System.Console.OpenStandardOutput()
-                            UseStream (false, Stream.CombineWrite(outMem, stdOut))
-                        else UseStream (false, outMem)
-                    else Inherit
-                StandardError =
-                    if p.RedirectStandardError then
-                        if printStderr then 
-                            let stdErr = System.Console.OpenStandardError()
-                            UseStream (false, Stream.CombineWrite(errMem, stdErr))
-                        else UseStream (false, errMem)
-                    else Inherit
-                StandardInput =
-                    if p.RedirectStandardInput && not (isNull stdInString) then
-                        let byteArray = System.Text.Encoding.UTF8.GetBytes( stdInString )
-                        let stream = new MemoryStream( byteArray )
-                        UseStream (true, stream)
-                    else Inherit }
-        let! proc = start (c) |> Async.AwaitTask
-
-        outMem.Position <- 0L
-        errMem.Position <- 0L
-        let! stdErr = (new StreamReader(errMem)).ReadToEndAsync() |> Async.AwaitTask
-        let! stdOut = (new StreamReader(outMem)).ReadToEndAsync() |> Async.AwaitTask
-        return
-            { CommandLine = proc.CommandLine
-              ExitCode = proc.ExitCode
-              Output = createOut opts stdOut stdErr }
-      }
     
-        
-
-    [<System.Obsolete("Use createProcess instead")>]
-    let startProcessCustomizedWithOpts (opts:RedirectOptionsP<'TRes>) configP =
-      async {
-        
-        let p = new ProcessStartInfo(CreateNoWindow = true)
-        p.UseShellExecute <- false
-        configP p
-        
-        if not Env.isLinux then
-            let cygPath = @"C:\Program Files\Git\usr\bin\cygpath.exe"
-            if not (File.Exists cygPath) then
-                failwithf "Please install git bash on default location for this program to work! ('%s' not found)" cygPath
-            if p.FileName.StartsWith "/" then
-                let p2 = 
-                    new ProcessStartInfo(
-                        FileName = cygPath,
-                        Arguments = sprintf "-w \"%s\"" p.FileName,
-                        CreateNoWindow = true)
-                let! r = startProcessRaw RedirectOptions.Default p2
-                p.FileName <- r.Output.StdOut
-        
-        return! startProcessRaw opts p
-      }
-    
-    [<System.Obsolete("Use createProcess instead")>]
-    let startProcessCustomized configP =
-        startProcessCustomizedWithOpts RedirectOptions.Default configP
-    [<System.Obsolete("Use createProcess instead")>]
-    let defaultCustomize workingDir processFile arguments (p:ProcessStartInfo) =
-        p.FileName <- processFile
-        p.Arguments <- arguments
-        p.WorkingDirectory <- System.IO.Path.GetFullPath(workingDir)
-    [<System.Obsolete("Use createProcess instead")>]
-    let startProcessWithOpts opts workingDir processFile arguments =
-        startProcessCustomizedWithOpts opts (defaultCustomize workingDir processFile arguments)
-    
-    
-    [<System.Obsolete("Use createProcess instead")>]
-    let startProcessIn workingDir processFile arguments = startProcessWithOpts RedirectOptions.Default workingDir processFile arguments
-    
-    [<System.Obsolete("Use createProcess instead")>]
-    let startProcess processFile arguments = startProcessWithOpts RedirectOptions.Default (Directory.GetCurrentDirectory()) processFile arguments
-    
-    [<System.Obsolete("Use createProcess instead")>]
-    let failWithMessage (msg:string) (r:ProcResult<'TRes>) =
-        if r.ExitCode <> 0 then failwith msg
-        r
-        
-    [<System.Obsolete("Use createProcess instead")>]
-    let failOnExitCode (r:ProcResult<'TRes>) =
-        match r :> obj with
-        | :? ProcResult<RedirectedOutput> as o ->
-            failWithMessage (sprintf "Process exit code '%d' <> 0. Command Line: %s\nStdOut: %s\nStdErr: %s" r.ExitCode r.CommandLine o.Output.StdOut o.Output.StdErr) r
-        | _ ->
-            failWithMessage (sprintf "Process exit code '%d' <> 0. Command Line: %s" r.ExitCode r.CommandLine) r
-
-    [<System.Obsolete("Use createProcess instead")>]
-    let getStdOut (r:ProcResult<RedirectedOutput>) = r.Output.StdOut
-    
-    [<System.Obsolete("Use createProcess instead")>]
-    let escapeCommandLineForShell (cmdLine:string) =
-        sprintf "'%s'" (cmdLine.Replace("'", "'\\''"))
-

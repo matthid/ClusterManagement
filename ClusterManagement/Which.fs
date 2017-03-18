@@ -11,10 +11,9 @@ module Which =
             let! result = 
                 CreateProcess.fromRawCommand cygPath [| "-w"; fileName |]
                 |> CreateProcess.redirectOutput
-                |> Proc.start
-                |> Async.AwaitTask
-                |> Async.map Proc.ensureExitCodeGetResult
-                |> Async.map (fun r -> r.Output)
+                |> CreateProcess.ensureExitCode
+                |> CreateProcess.map (fun r -> r.Output)
+                |> Proc.startAndAwait
             if Env.isVerbose then
                 printfn "Resolved Path '%s' to %s" fileName result
             return result
@@ -34,10 +33,11 @@ module Which =
         let! toolPath =
             CreateProcess.fromRawCommand "/usr/bin/which" [| toolName |]
             |> CreateProcess.redirectOutput
+            |> CreateProcess.map (fun r -> r.Output)
+            |> CreateProcess.ensureExitCodeWithMessage (sprintf "Tool '%s' was not found with which! Make sure it is installed." toolName)
             |> resolveCygwinPathInRawCommand
-            |> Async.bind (Proc.start >> Async.AwaitTask)
-            |> Async.map (Proc.ensureExitCodeWithMessageGetResult (sprintf "Tool '%s' was not found with which! Make sure it is installed." toolName))
-            |> Async.map (fun r -> r.Output)
+            |> Async.bind (Proc.startAndAwait)
+
         let toolPath =
             if toolPath.EndsWith("\n") then toolPath.Substring(0, toolPath.Length - 1)
             else toolPath

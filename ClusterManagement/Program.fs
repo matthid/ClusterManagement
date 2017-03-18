@@ -57,8 +57,12 @@ let handleArgs (argv:string array) =
             printfn "IsConsoleSizeZero: %b" Env.isConsoleSizeZero
             printfn "stdInTTy: %b" Env.stdInTTy
             let stty = Which.getToolPath "stty" |> Async.RunSynchronously
-            let res = Proc.startProcess stty "-a" |> Async.RunSynchronously
-            printfn "stty -a: %s" res.Output.StdOut 
+            let res =
+                CreateProcess.fromRawCommand stty [|""|]
+                |> CreateProcess.redirectOutput
+                |> Proc.startRaw
+                |> fun r -> r.GetAwaiter().GetResult()
+            printfn "stty -a: %s" res.Result.Output
         
         if not Env.isLinux then
             eprintfn "WARN: This program was currently only tested as matthid/clustermanagement dockerized app. Running it standalone (especially on windows) might lead to bugs."        
@@ -203,10 +207,13 @@ let handleArgs (argv:string array) =
                 | Some (name) ->
                     Storage.openClusterWithStoredSecret name
                     let res =
-                        DockerMachine.runInteractive name (restArgs |> Arguments.OfArgs).ToWindowsCommandLine
+                        DockerMachine.createProcess name (restArgs |> Arguments.OfArgs)
+                        |> Proc.startRaw
+                        |> Async.AwaitTask
                         |> Async.RunSynchronously
+
                     Storage.closeClusterWithStoredSecret name
-                    0
+                    res.ExitCode
                 | None ->
                     printfn "Please specify a cluster to run this command for."
                     printfn "%s" (res.Parser.PrintUsage())

@@ -32,11 +32,11 @@ module DockerWrapper =
         CreateProcess.fromCommand (RawCommand (!dockerPath, args))
         |> CreateProcess.withWorkingDirectory (System.IO.Directory.GetCurrentDirectory())
         |> CreateProcess.withEnvironment env
-    let startAndAwait args =
+    let createProcessWithOutput args =
         args
         |> createProcess
         |> CreateProcess.redirectOutput
-        |> Proc.startAndAwait
+
     // otherwise compiler needs inspect-example for projects referencing this assembly :(
     type internal InspectJson = FSharp.Data.JsonProvider< "inspect-example.json" >
     
@@ -57,9 +57,10 @@ module DockerWrapper =
     let ensureWorking() =
       async { 
         do! CreateProcess.fromRawWindowsCommandLine !dockerPath "version"
-            |> Proc.start
-            |> Async.AwaitTask
-            |> Async.map Proc.ensureExitCodeGetResult
+            |> CreateProcess.redirectOutput
+            |> CreateProcess.ensureExitCode
+            |> Proc.startAndAwait
+            |> Async.Ignore
 
         // Find our own container-id and save all binds for later mapping.
         if System.IO.File.Exists("/proc/self/cgroup") then
@@ -82,9 +83,9 @@ module DockerWrapper =
                     |> Arguments.OfArgs
                     |> createProcess
                     |> CreateProcess.redirectOutput
+                    |> CreateProcess.ensureExitCode
+                    |> CreateProcess.map (fun o -> o.Output)
                     |> Proc.startAndAwait
-                    |> Async.map (Proc.ensureExitCodeGetResult)
-                    |> Async.map (fun o -> o.Output)
 
                 let first = getFirstInspectJson stdOut
                 let binds =
@@ -212,45 +213,83 @@ module DockerWrapper =
                 |> Seq.toList
             }
         }
+    
+    type DockerPsQuietRow = { ContainerId : string }
+    let internal parseDockerPsQuiet (stdOut:string) =
+        stdOut.Split ([|'\r';'\n'|], System.StringSplitOptions.RemoveEmptyEntries)
+        |> Seq.map (fun line -> { ContainerId = line.Trim() } )
+        |> Seq.toList
+
+    let ps () =
+        createProcess ([|"ps"; "-q"|] |> Arguments.OfArgs)
+        |> CreateProcess.redirectOutput
+        |> CreateProcess.ensureExitCode
+        |> CreateProcess.map (fun o -> parseDockerPsQuiet o.Output)
+          
+    let internal inspect containerId =
+        createProcess ([|"inspect"; containerId|] |> Arguments.OfArgs)
+        |> CreateProcess.redirectOutput
+        |> CreateProcess.ensureExitCode
+        |> CreateProcess.map (fun o -> getFirstInspectJson o.Output)
+        
+    let kill containerId =
+        createProcess ([|"kill"; containerId|] |> Arguments.OfArgs)
+        |> CreateProcess.ensureExitCode
+
+    let remove containerId =
+        createProcess ([|"rm"; containerId|] |> Arguments.OfArgs)
+        |> CreateProcess.ensureExitCode
+
+    let listServices () =
+        createProcess ([|"service"; "ls"|] |> Arguments.OfArgs)
+        |> CreateProcess.redirectOutput
+        |> CreateProcess.ensureExitCode
+        |> CreateProcess.map (fun o -> parseServices o.Output)
+        
+    let removeService service =
+        createProcess ([|"service"; "rm"; service|] |> Arguments.OfArgs)
+        //|> CreateProcess.ensureExitCode
 
 module DockerMachineWrapper =
     let dockerMachinePath = ref "docker-machine"
     let dockerMachineStoragePath = "/docker-machine/storage"
     let ensureWorking() =
-        Proc.startProcess !dockerMachinePath "version"
-        |> Async.map (Proc.failOnExitCode)
-        |> Async.Ignore
+        CreateProcess.fromRawCommand !dockerMachinePath [|"version"|]
+        |> CreateProcess.ensureExitCode
+        |> Proc.startAndAwait
 
-    let runExt opts confDir args =
-      async {
-        // Safe copy MACHINE_STORAGE_PATH because of a permission issue on windows...
-        if System.IO.Directory.Exists dockerMachineStoragePath then
-            System.IO.Directory.Delete(dockerMachineStoragePath, true)
-        System.IO.Directory.CreateDirectory(dockerMachineStoragePath) |> ignore
+    let createProcess confDir args =
         let t = dockerMachineStoragePath
+        
+        let env = 
+            System.Environment.GetEnvironmentVariables() 
+            |> Seq.cast<System.Collections.DictionaryEntry> 
+            |> Seq.map (fun kv -> string kv.Key, string kv.Value)
+            |> fun s -> Seq.append s ["MACHINE_STORAGE_PATH", t]
+            |> Seq.toList
 
-        try
+        CreateProcess.fromCommand (RawCommand (!dockerMachinePath, args))
+        |> CreateProcess.withWorkingDirectory (System.IO.Directory.GetCurrentDirectory())
+        |> CreateProcess.withEnvironment env
+        |> CreateProcess.addSetup (fun _ ->
+            if System.IO.Directory.Exists t then
+                System.IO.Directory.Delete(t, true)
+            System.IO.Directory.CreateDirectory(t) |> ignore
             Env.cp { Env.CopyOptions.Default with IntegrateExisting = true; IsRecursive = true }
                 confDir t
             
             Env.chmod Env.CmodOptions.Rec (LanguagePrimitives.EnumOfValue 0o0600u) t
 
-            let! res = Proc.startProcessCustomizedWithOpts opts (fun p ->
-                p |> Proc.defaultCustomize (System.IO.Directory.GetCurrentDirectory()) !dockerMachinePath args
-                let setEnv key var =
-                    p.EnvironmentVariables.[key] <- var
-                for entry in System.Environment.GetEnvironmentVariables() |> Seq.cast<System.Collections.DictionaryEntry> do
-                    setEnv (entry.Key :?> string) (entry.Value :?> string)
-                setEnv "MACHINE_STORAGE_PATH" t)
-            System.IO.Directory.Delete(confDir, true)
-            Env.cp { Env.CopyOptions.Default with IntegrateExisting = true; IsRecursive = true }
-                t confDir
-            return res
-        finally
-            System.IO.Directory.Delete (t, true)
-      }
+            { new IProcessHook with
+                member x.Dispose () =
+                    System.IO.Directory.Delete (t, true) 
+                member x.ProcessExited e =
+                    System.IO.Directory.Delete(confDir, true)
+                    Env.cp { Env.CopyOptions.Default with IntegrateExisting = true; IsRecursive = true }
+                        t confDir
+                member x.ParseSuccess _ = ()
+            })
 
-    let run confDir args = runExt Proc.RedirectOptions.Default confDir args
-    let runInteractive confDir args = runExt Proc.RedirectOptions.Interactive confDir args
-
-
+    let createProcessWithOutput confDir args =
+        createProcess confDir args
+        |> CreateProcess.redirectOutput

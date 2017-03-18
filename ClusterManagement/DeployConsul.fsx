@@ -20,14 +20,19 @@ let rawWorkerNum =  d.Nodes.Length - rawMasterNum
 let masterNum = max rawMasterNum 3
 let workerNum = max rawWorkerNum 2
 
-let runDocker args = DockerMachine.runDockerOnNode d.ClusterName "master-01" args |> Async.RunSynchronously
+let runDockerRaw node args = DockerMachine.runDockerOnNode d.ClusterName node args |> Proc.startRaw |> fun t -> t.GetAwaiter().GetResult()
+let runDockerE node cmd =
+    DockerWrapper.createProcess (cmd |> Arguments.OfWindowsCommandLine)
+    |> CreateProcess.redirectOutput
+    |> runDockerRaw node
+let runDocker cmd = runDockerE "master-01" cmd
 
-let services = runDocker "service ls" |> Proc.failOnExitCode |> Proc.getStdOut |> DockerWrapper.parseServices
+let services = runDocker "service ls" |> Proc.ensureExitCodeGetResult |> (fun r -> r.Output) |> DockerWrapper.parseServices
 
 for service in services |> Seq.filter (fun s -> s.Name.StartsWith("consul")) do
     let res = runDocker (sprintf "service rm %s" service.Id)
     if res.ExitCode <> 0 then
-        eprintfn "Failed (%d) to remove service %s.\nOutput: %s\nError: %s" res.ExitCode service.Name res.Output.StdOut res.Output.StdErr
+        eprintfn "Failed (%d) to remove service %s.\nOutput: %s\nError: %s" res.ExitCode service.Name res.Result.Output res.Result.Error
 
 
 for master in [ 1 .. masterNum ] do
@@ -39,17 +44,17 @@ for master in [ 1 .. masterNum ] do
         runDocker 
             (sprintf "service create --name consul-master-%02d --mount type=volume,src=%s,dst=/consul/data,volume-driver=flocker --network swarm-net --constraint node.role==manager -e 'CONSUL_LOCAL_CONFIG={\"skip_leave_on_interrupt\":true}' consul agent -server -advertise=10.0.0.3 -bootstrap-expect=%d -bind=0.0.0.0 -client=0.0.0.0"
                 master volName masterNum)
-            |> Proc.failOnExitCode
+            |> Proc.ensureExitCodeGetResult
             |> ignore
         // for the first node we assert if the ip is correct
-        let inspect = runDocker (sprintf "service inspect %s" "consul-master-01") |> Proc.failOnExitCode |> Proc.getStdOut |> DockerWrapper.getServiceInspectJson
+        let inspect = runDocker (sprintf "service inspect %s" "consul-master-01") |> Proc.ensureExitCodeGetResult |> (fun r -> r.Output)  |> DockerWrapper.getServiceInspectJson
         let ip = inspect.Endpoint.VirtualIps.Head
         if ip.Addr <> "10.0.0.2" then failwithf "expected ip 10.0.0.2, but was %s" ip.Addr
     else
         runDocker 
             (sprintf "service create --name consul-master-%02d --mount type=volume,src=%s,dst=/consul/data,volume-driver=flocker --network swarm-net --constraint node.role==manager -e 'CONSUL_LOCAL_CONFIG={\"skip_leave_on_interrupt\":true}' consul agent -server -advertise=10.0.0.%d -retry-join=10.0.0.3 -bootstrap-expect=%d -bind=0.0.0.0 -client=0.0.0.0"
                 master volName (1 + master * 2) masterNum)
-            |> Proc.failOnExitCode
+            |> Proc.ensureExitCodeGetResult
             |> ignore
 
 let contraint = if rawWorkerNum > 0 then "--constraint node.role!=manager " else ""
@@ -65,7 +70,7 @@ for tok in Config.getTokens d.ClusterName d.ClusterConfig do
         try
             runDocker
                 (sprintf "run --net=swarm-net consul kv put -http-addr=consul:8500 yaaf/config/tokens/%s %s" tok.Name tok.Value)
-            |> Proc.failOnExitCode
+            |> Proc.ensureExitCodeGetResult
             |> ignore
             success <- true
         with e when retryCount > 0 ->

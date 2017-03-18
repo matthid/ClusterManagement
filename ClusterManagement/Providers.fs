@@ -32,30 +32,35 @@ module Providers =
         match getProvider clusterConfig with
         | AWS ->
             let awsRegion = (ClusterConfig.getConfig "AWS_REGION" clusterConfig).Value
-        
-            let! res = DockerMachine.runInteractive clusterName (sprintf "create --driver amazonec2 --amazonec2-region %s \"%s\"" awsRegion machineName)
-            res |> Proc.failWithMessage "failed create new machine! If the error reads 'There is already a keypair' you should try to remove the corresponding key from the aws console." |> ignore
+
+            do!
+                DockerMachine.createProcess clusterName ([|"create";"--driver";"amazonec2";"--amazonec2-region";awsRegion; machineName|] |> Arguments.OfArgs)
+                |> CreateProcess.ensureExitCodeWithMessage
+                        "failed create new machine! If the error reads 'There is already a keypair' you should try to remove the corresponding key from the aws console."
+                |> Proc.startAndAwait
+
         | Generic ->
             let privKey = (ClusterConfig.getConfig "SSH_KEY" clusterConfig).Value
             let host = (ClusterConfig.getConfig "SSH_HOST" clusterConfig).Value
             let tmp = System.IO.Path.GetTempFileName()
             System.IO.File.WriteAllText(tmp, privKey)
-            let userArg =
-                match ClusterConfig.getConfig "SSH_USER" clusterConfig with
-                | Some s -> sprintf "--generic-ssh-user=%s " s
-                | _ -> ""
-            let portArg =
-                match ClusterConfig.getConfig "SSH_PORT" clusterConfig with
-                | Some s -> sprintf "--generic-ssh-port=%s " s
-                | _ -> ""
-            let enginePortArg =
-                match ClusterConfig.getConfig "ENGINE_PORT" clusterConfig with
-                | Some s -> sprintf "--generic-engine-port=%s " s
-                | _ -> ""
-            let! res = 
-                DockerMachine.runInteractive clusterName 
-                    (sprintf "create --driver generic %s%s%s--generic-ssh-key=%s --generic-ip-address=%s \"%s\"" portArg enginePortArg userArg tmp host machineName)
-            res |> Proc.failWithMessage "failed create new machine!" |> ignore
+            do!
+                DockerMachine.createProcess clusterName 
+                    ([|
+                        yield! ["create"; "--driver"; "generic"]
+                        match ClusterConfig.getConfig "SSH_PORT" clusterConfig with
+                        | Some s -> yield sprintf "--generic-ssh-port=%s" s
+                        | _ -> ()
+                        match ClusterConfig.getConfig "ENGINE_PORT" clusterConfig with
+                        | Some s -> yield sprintf "--generic-engine-port=%s" s
+                        | _ -> ()
+                        match ClusterConfig.getConfig "SSH_USER" clusterConfig with
+                        | Some s -> yield sprintf "--generic-ssh-user=%s" s
+                        | _ -> ()
+                        yield! [sprintf "--generic-ssh-key=%s" tmp; sprintf "--generic-ip-address=%s" host; machineName]
+                        |] |> Arguments.OfArgs)
+                |> CreateProcess.ensureExitCodeWithMessage "failed create new machine!"
+                |> Proc.startAndAwait
             ()
       }
 
@@ -91,12 +96,15 @@ aws <command> *)
       async {
         match getProvider clusterConfig with
         | AWS ->
-            let! res = DockerMachine.inspect clusterName "master-01"
+            let! res =
+                DockerMachine.inspect clusterName "master-01"
+                |> Proc.startAndAwait
             let securityGroupId = res.Driver.SecurityGroupIds.[0]
             let! res = 
                 runAws clusterConfig (sprintf "ec2 authorize-security-group-ingress --group-id %s --protocol all --port 0-65535 --source-group %s" securityGroupId securityGroupId)
                 |> CreateProcess.redirectOutput
-                |> Proc.startAndAwait
+                |> Proc.startRaw
+                |> Async.AwaitTask
             let output = Proc.getResultIgnoreExitCode res
             if output.Error.Contains "InvalidPermission.Duplicate" || output.Output.Contains "InvalidPermission.Duplicate" then
                 if Env.isVerbose then eprintfn "Ignoring InvalidPermission.Duplicate error while editing security group."

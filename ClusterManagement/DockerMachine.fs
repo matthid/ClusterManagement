@@ -3,50 +3,58 @@
 open System.IO
 
 module DockerMachine =
-    
 
     let getMachineName clusterName nodeName =
         sprintf "%s-%s" clusterName nodeName
 
-    let runExt (opts) cluster args =
-      async {
-        let c = ClusterConfig.readClusterConfig cluster
-        let tokens = ClusterConfig.getTokens c
+    let createProcess cluster args =
         let dockerMachineDir = StoragePath.getDockerMachineDir cluster
-        let homeDir = System.Environment.GetFolderPath(System.Environment.SpecialFolder.UserProfile)
-        let awsConfigDir = Path.Combine(homeDir, ".aws")
-        let awsCredentials = Path.Combine(awsConfigDir, "credentials")
-        let awsConfig = Path.Combine(awsConfigDir, "config")
-        let restoreAwsConfig = if File.Exists awsConfig then File.Move (awsConfig, awsConfig + ".backup"); true else false
-        let restoreAwsCredentials = if File.Exists awsCredentials then File.Move (awsCredentials, awsCredentials + ".backup"); true else false
-        try
-            if Directory.Exists awsConfigDir |> not then Directory.CreateDirectory awsConfigDir |> ignore
-            File.WriteAllText (awsCredentials, Env.getResourceText "aws_config" |> Config.replaceTokens tokens)
-            File.WriteAllText (awsCredentials, Env.getResourceText "aws_credentials" |> Config.replaceTokens tokens)
-            let! res = DockerMachineWrapper.runExt opts dockerMachineDir args
-            return res
-        finally
-            if restoreAwsCredentials then File.Delete awsCredentials; File.Move (awsCredentials + ".backup", awsCredentials)
-            if restoreAwsConfig then File.Delete awsConfig; File.Move (awsConfig + ".backup", awsConfig)
-      }
-      
-    let run cluster args = runExt Proc.RedirectOptions.Default cluster args
-    let runInteractive cluster args = runExt Proc.RedirectOptions.Interactive cluster args
+        DockerMachineWrapper.createProcess dockerMachineDir args
+        |> CreateProcess.addSetup (fun () ->
+            let c = ClusterConfig.readClusterConfig cluster
+            let tokens = ClusterConfig.getTokens c
+            let homeDir = System.Environment.GetFolderPath(System.Environment.SpecialFolder.UserProfile)
+            let awsConfigDir = Path.Combine(homeDir, ".aws")
+            let awsCredentials = Path.Combine(awsConfigDir, "credentials")
+            let awsConfig = Path.Combine(awsConfigDir, "config")
+            let restoreAwsConfig = if File.Exists awsConfig then File.Move (awsConfig, awsConfig + ".backup"); true else false
+            let restoreAwsCredentials = if File.Exists awsCredentials then File.Move (awsCredentials, awsCredentials + ".backup"); true else false
+            let cleanup () =
+                if restoreAwsCredentials then File.Delete awsCredentials; File.Move (awsCredentials + ".backup", awsCredentials)
+                if restoreAwsConfig then File.Delete awsConfig; File.Move (awsConfig + ".backup", awsConfig)
+            try
+                if Directory.Exists awsConfigDir |> not then Directory.CreateDirectory awsConfigDir |> ignore
+                File.WriteAllText (awsCredentials, Env.getResourceText "aws_config" |> Config.replaceTokens tokens)
+                File.WriteAllText (awsCredentials, Env.getResourceText "aws_credentials" |> Config.replaceTokens tokens)
+            with _ -> cleanup(); reraise()
+            { new IProcessHook with
+                member x.ProcessExited _ = ()
+                member x.ParseSuccess _ = ()
+                member x.Dispose () = cleanup() }
+            )
+
+    let ssh cluster nodeName command =
+        let machineName = getMachineName cluster nodeName
+        createProcess cluster ([|"ssh"; machineName; command |] |> Arguments.OfArgs)
+
+    let sshExt cluster nodeName (createProcess:CreateProcess<_>) =
+        let cmdLine =
+            match createProcess.Command with
+            | ShellCommand s -> s
+            | RawCommand (f, arg) -> sprintf "%s %s" f arg.ToLinuxShellCommandLine
+        ssh cluster nodeName cmdLine
+        |> CreateProcess.withResultFunc createProcess.GetResult
+        |> CreateProcess.addSetup createProcess.Setup
     
-
-    let runOnNode cluster nodeName command =
-      async {
-        let machineName = getMachineName cluster nodeName
-        return! run cluster (sprintf "ssh %s %s" machineName (Proc.escapeCommandLineForShell command))
-      }
-
     let getExternalIp cluster nodeName =
-      async {
+        let runIp arguments =
+            CreateProcess.fromRawCommand "ip" arguments
         let machineName = getMachineName cluster nodeName
-        let! res = run cluster (sprintf "ip %s" machineName)
-        res |> Proc.failOnExitCode |> ignore
-        return res.Output.StdOut.Trim()
-      }
+        runIp [|machineName|]
+        |> sshExt cluster nodeName
+        |> CreateProcess.redirectOutput
+        |> CreateProcess.map (fun r -> r.Output.Trim())
+
 
     type internal InspectJson = FSharp.Data.JsonProvider<"machine-inspect-example.json">
     let internal parseInspectJson json =
@@ -54,17 +62,19 @@ module DockerMachine =
         json
 
     let internal inspect cluster nodeName =
-      async {
         let machineName = getMachineName cluster nodeName
-        let! res = run cluster (sprintf "inspect %s" machineName)
-        res |> Proc.failOnExitCode |> ignore
-        return parseInspectJson(res.Output.StdOut.Trim())
-      }
+        createProcess cluster ([|"inspect"; machineName |] |> Arguments.OfArgs)
+        |> CreateProcess.redirectOutput
+        |> CreateProcess.map (fun r -> parseInspectJson (r.Output.Trim()))
       
-    let runDockerOnNode cluster nodeName args =
-      async {
-        return! runOnNode cluster nodeName (sprintf "sudo docker %s" args)
-      }
+
+    let runDockerOnNode cluster nodeName dockerCommand =
+        dockerCommand
+        |> CreateProcess.withCommand 
+            (match dockerCommand.Command with
+             | ShellCommand _ -> invalidOp "expected RawCommand"
+             | RawCommand (_, args) -> RawCommand("sudo docker", args))
+        |> sshExt cluster nodeName
 
     let internal parseIfConfig (ifConfigOut:string) =
         ifConfigOut.Split ([|'\r';'\n'|], System.StringSplitOptions.RemoveEmptyEntries)
@@ -88,57 +98,40 @@ module DockerMachine =
 
           
     let getIp networkInterface cluster nodeName =
-      async {
-        let machineName = getMachineName cluster nodeName
-        let! res = runOnNode cluster nodeName (sprintf "ifconfig %s" networkInterface)
-        let ifConfigOut = res.Output.StdOut //           inet addr:172.17.0.1  Bcast:0.0.0.0  Mask:255.255.0.0
-        
-        if Env.isVerbose then
-            printfn "\"ifconfig %s\" returned: %s" networkInterface ifConfigOut
-        
-        let ip =
-            match parseIfConfig ifConfigOut with
-            | Some ip -> ip
-            | None -> failwithf "Could not detect ip of machine '%s' via 'ifconfig docker0 | grep \"inet addr\"'" machineName
-        return ip
-      }
+        let runIfConfig arguments =
+            CreateProcess.fromRawCommand "ifconfig" arguments
+        let getIpFromInterface networkInterface =
+            runIfConfig [|networkInterface|]
+            |> CreateProcess.redirectOutput
+            |> CreateProcess.map (fun o -> 
+                match parseIfConfig o.Output with
+                | Some ip -> ip
+                | None -> failwithf "Could not detect ip of interace via 'ifconfig %s | grep \"inet addr\"'" networkInterface)
+        getIpFromInterface networkInterface
+        |> sshExt cluster nodeName
 
     let getDockerIp cluster nodeName =
         getIp "docker0" cluster nodeName
     let getEth0Ip cluster nodeName =
         getIp "eth0" cluster nodeName
 
-    type DockerPsQuietRow = { ContainerId : string }
-    let internal parseDockerPsQuiet (stdOut:string) =
-        stdOut.Split ([|'\r';'\n'|], System.StringSplitOptions.RemoveEmptyEntries)
-        |> Seq.map (fun line -> { ContainerId = line.Trim() } )
-        |> Seq.toList
-
     let runDockerPs cluster nodeName =
-      async {
-        let! res = runDockerOnNode cluster nodeName "ps -q"
-        res |> Proc.failOnExitCode |> ignore
-        return parseDockerPsQuiet res.Output.StdOut
-      }
+        DockerWrapper.ps ()
+        |> runDockerOnNode cluster nodeName
         
     let internal runDockerInspect cluster nodeName containerId =
-      async {
-        let! res = runDockerOnNode cluster nodeName (sprintf "inspect %s" containerId)
-        res |> Proc.failOnExitCode |> ignore
-        return DockerWrapper.getFirstInspectJson res.Output.StdOut
-      }
+        DockerWrapper.inspect containerId
+        |> runDockerOnNode cluster nodeName
 
     let runDockerKill cluster nodeName containerId =
-      async {
-        let! res = runDockerOnNode cluster nodeName (sprintf "kill %s" containerId)
-        res |> Proc.failOnExitCode |> ignore
-      }
+        DockerWrapper.kill containerId
+        |> runDockerOnNode cluster nodeName
 
     let runDockerRemove cluster nodeName containerId =
-      async {
-        let! res = runDockerOnNode cluster nodeName (sprintf "rm %s" containerId)
-        res |> Proc.failOnExitCode |> ignore
-      }
+        DockerWrapper.remove containerId
+        |> runDockerOnNode cluster nodeName
 
+    let remove cluster machineName =
+        createProcess cluster ([|"rm";"-y"; machineName |] |> Arguments.OfArgs)
             
         
