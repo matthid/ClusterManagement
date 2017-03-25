@@ -82,11 +82,12 @@ module Volume =
 
         let items =
             out.Split([| '\r'; '\n' |], System.StringSplitOptions.RemoveEmptyEntries)
-            |> Seq.skip 1
+            |> Seq.toList
+            |> fun i -> try List.skip 1 i with e -> raise <| exn(sprintf "could not skip header line, input was: %A" i, e)
             // Scan because lines might get extended...
-            |> Seq.scan splitLine (null, null, { Dataset = null; Size = null; Metadata = null; Status = null; ServerId = null; ServerIP = null })
-            |> Seq.map (fun (_,_,d) -> d)
-            |> Seq.skip 1
+            |> List.scan splitLine (null, null, { Dataset = null; Size = null; Metadata = null; Status = null; ServerId = null; ServerIP = null })
+            |> List.map (fun (_,_,d) -> d)
+            |> fun i -> try List.skip 1 i with e -> raise <| exn(sprintf "could not skip 'null' scan entry, input was: %A" i, e)
             |> Seq.groupBy (fun d -> d.Dataset) // group by dataset
             |> Seq.map (fun (_,g) -> g |> Seq.last) // take the last fixup
             |> Seq.toList
@@ -128,6 +129,63 @@ module Volume =
                     failwithf "Could not get a flocker node!"
             let! res = flockerctl cluster "master-01" (sprintf "create -n %s -s %d -m \"name=%s,cluster=%s\"" !nodeId size name cluster)
             res |> Proc.ensureExitCodeGetResult |> ignore
+      }
+
+    let download cluster volName targetDir =
+      async {
+        do!
+            DockerWrapper.remove true "backup-volume-helper"
+            |> DockerMachine.runDockerOnNode cluster "master-01"
+            |> Proc.startAndAwait
+
+        let! containerId =
+            DockerWrapper.createProcess
+                (sprintf "run -d --rm --volume-driver flocker -v %s:/backup --name backup-volume-helper --net swarm-net -e NOSTART=true --entrypoint /sbin/my_init phusion/baseimage"
+                    volName
+                 |> Arguments.OfWindowsCommandLine)
+            |> CreateProcess.redirectOutput
+            |> CreateProcess.ensureExitCode
+            |> CreateProcess.map (fun r -> r.Output.Trim())
+            |> DockerMachine.runDockerOnNode cluster "master-01"
+            |> Proc.startAndAwait
+        
+        try
+            let! parsed =
+                DockerWrapper.inspect containerId
+                |> DockerMachine.runDockerOnNode cluster "master-01"
+                |> Proc.startAndAwait
+
+            match parsed.Mounts |> List.filter (fun m -> m.Driver = Some "flocker" && m.Name = Some volName) with
+            | [ mount ] ->
+                let flockerDir = mount.Source
+                let machine = DockerMachine.getMachineName cluster "master-01"
+                System.IO.Directory.CreateDirectory(targetDir) |> ignore
+      
+                let streamRef = StreamRef.Empty
+                let compressProc =
+                    DockerMachine.ssh cluster "master-01" (sprintf "sudo tar -c -C %s ." flockerDir)
+                    |> CreateProcess.withStandardOutput (StreamSpecification.CreatePipe streamRef)
+                    |> CreateProcess.ensureExitCode
+                    |> Proc.start
+                let extractProc =
+                    CreateProcess.fromRawCommand "tar" [|"-x";"--no-same-owner";"-C";targetDir|]
+                    |> CreateProcess.withStandardInput (StreamSpecification.UseStream(false, streamRef.Value))
+                    |> CreateProcess.ensureExitCode
+                    |> Proc.start
+
+                do! compressProc |> Async.AwaitTask
+                do! extractProc |> Async.AwaitTask
+            | _ -> failwithf "expected our dummy container to have exactly one mount, but has %A" parsed.Mounts
+
+        finally
+            DockerWrapper.remove true containerId
+            |> DockerMachine.runDockerOnNode cluster "master-01"
+            |> Proc.startAndAwait
+            |> Async.RunSynchronously
+
+
+
+        ()
       }
 
     let clone fromCluster toCluster =

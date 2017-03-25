@@ -35,13 +35,21 @@ module DockerMachine =
 
     let ssh cluster nodeName command =
         let machineName = getMachineName cluster nodeName
-        createProcess cluster ([|"ssh"; machineName; command |] |> Arguments.OfArgs)
+        let args = command |> Arguments.OfWindowsCommandLine
+        //let cmd = args.Args.[0]
+        //let restArgs = { Args = args.Args.[1..args.Args.Length - 1] }
+        let usingArgs =
+            //if cmd = "sudo" then
+            //    ([|"ssh"; machineName; "echo"; restArgs.ToWindowsCommandLine |> CmdLineParsing.escapeCommandLineForShell |] |> Arguments.OfArgs)
+            //else
+                ([|yield "ssh"; yield machineName; yield! args.Args |] |> Arguments.OfArgs)
+        createProcess cluster usingArgs
 
     let sshExt cluster nodeName (createProcess:CreateProcess<_>) =
         let cmdLine =
             match createProcess.Command with
             | ShellCommand s -> s
-            | RawCommand (f, arg) -> sprintf "%s %s" f arg.ToLinuxShellCommandLine
+            | RawCommand (f, arg) -> sprintf "%s %s" f arg.ToWindowsCommandLine
         ssh cluster nodeName cmdLine
         |> CreateProcess.withResultFunc createProcess.GetResult
         |> CreateProcess.addSetup createProcess.Setup
@@ -127,8 +135,8 @@ module DockerMachine =
         DockerWrapper.kill containerId
         |> runDockerOnNode cluster nodeName
 
-    let runDockerRemove cluster nodeName containerId =
-        DockerWrapper.remove containerId
+    let runDockerRemove cluster nodeName force containerId =
+        DockerWrapper.remove force containerId
         |> runDockerOnNode cluster nodeName
 
     let remove cluster machineName =

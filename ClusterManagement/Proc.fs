@@ -445,9 +445,9 @@ module CreateProcess  =
                 StandardOutput = UseStream (false, outMem)
                 StandardError = UseStream (false, errMem)
                 GetRawOutput = Some getOutput }
-                |> map (fun _ -> getOutput())
+                |> withResultFuncRaw id
         | Some f ->
-            c |> map (fun _ -> f ())
+            c |> withResultFuncRaw id
     let withResultFunc f (x:CreateProcess<_>) =
         match x.GetRawOutput with
         | Some _ -> x |> withResultFuncRaw f
@@ -609,6 +609,9 @@ module Proc =
             match c.GetRawOutput with
             | Some f -> f(), true
             | None -> { Output = ""; Error = "" }, false
+
+        if Env.isVerbose && realResult then
+            printfn "Process Output: %s, Error: %s" o.Output o.Error
 
         let result =
             try c.GetResult o

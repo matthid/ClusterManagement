@@ -123,9 +123,12 @@ module ServeConfig =
     let mimeTypes =
         Writers.defaultMimeTypesMap
         @@ (function | _ -> Writers.createMimeType "application/octet-stream" false)
-    let mylogging level getMsg =
+    let mylogging (level:Logging.LogLevel) getMsg =
+      if level > Logging.LogLevel.Info then
         let (msg:Logging.Message) = getMsg level
-        printfn "msg: %A" msg
+        match msg.value with
+        | Logging.PointValue.Event event -> printfn "logger: %A" msg
+        | _ -> ()
 
     let config =
         { defaultConfig with 

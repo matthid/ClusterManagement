@@ -437,7 +437,7 @@ module Cluster =
                                 else res |> Proc.ensureExitCodeGetResult |> ignore
                             | None ->
                                 do! DockerMachine.runDockerKill clusterName n.Name container.ContainerId |> Proc.startAndAwait
-                                do! DockerMachine.runDockerRemove clusterName n.Name container.ContainerId |> Proc.startAndAwait
+                                do! DockerMachine.runDockerRemove clusterName n.Name false container.ContainerId |> Proc.startAndAwait
               }
             do! killBlockingServices()
             

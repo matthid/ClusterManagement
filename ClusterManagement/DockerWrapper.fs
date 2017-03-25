@@ -44,15 +44,22 @@ module DockerWrapper =
         let json = InspectJson.Load(new System.IO.StringReader(json))
         json.[0]
     
+    type InspectConfigLabels = { ComDockerSwarmServiceName : string option }
+    type InspectConfig = { Labels : InspectConfigLabels }
     type InspectMount = { Name :string option; Source: string; Destination: string; Driver : string option}
     type Inspect =
-        { Id : string; Name : string; Mounts : InspectMount list }
+        { Id : string; Name : string; Mounts : InspectMount list; Config : InspectConfig }
 
+    //Config.Labels.ComDockerSwarmServiceName
     let parseInspect json =
         let tp = getFirstInspectJson json
         let parseMount (m:InspectJson.Mount) =
             { Name = m.Name; Source = m.Source; Destination = m.Destination; Driver = m.Driver }
-        {Id = tp.Id; Name= tp.Name; Mounts = tp.Mounts |> Seq.map parseMount |> Seq.toList }
+        let parseLabels (m:InspectJson.Labels) =
+            { ComDockerSwarmServiceName = m.ComDockerSwarmServiceName }
+        let parseConfig (m:InspectJson.Config2) =
+            { Labels = parseLabels m.Labels }
+        {Id = tp.Id; Name= tp.Name; Mounts = tp.Mounts |> Seq.map parseMount |> Seq.toList; Config = parseConfig tp.Config }
 
     let ensureWorking() =
       async { 
@@ -225,20 +232,20 @@ module DockerWrapper =
         |> CreateProcess.redirectOutput
         |> CreateProcess.ensureExitCode
         |> CreateProcess.map (fun o -> parseDockerPsQuiet o.Output)
-          
-    let internal inspect containerId =
+
+    let inspect containerId =
         createProcess ([|"inspect"; containerId|] |> Arguments.OfArgs)
         |> CreateProcess.redirectOutput
         |> CreateProcess.ensureExitCode
-        |> CreateProcess.map (fun o -> getFirstInspectJson o.Output)
+        |> CreateProcess.map (fun o -> parseInspect o.Output)
         
     let kill containerId =
         createProcess ([|"kill"; containerId|] |> Arguments.OfArgs)
         |> CreateProcess.ensureExitCode
 
-    let remove containerId =
-        createProcess ([|"rm"; containerId|] |> Arguments.OfArgs)
-        |> CreateProcess.ensureExitCode
+    let remove force containerId =
+        createProcess ([|yield "rm"; if force then yield "-f"; yield containerId|] |> Arguments.OfArgs)
+        //|> CreateProcess.ensureExitCode
 
     let listServices () =
         createProcess ([|"service"; "ls"|] |> Arguments.OfArgs)
