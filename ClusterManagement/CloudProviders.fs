@@ -1,6 +1,6 @@
 ﻿namespace ClusterManagement
 
-module Providers = 
+module CloudProviders = 
     
     type SupportedProviders =
         | AWS

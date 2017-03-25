@@ -18,10 +18,12 @@ let checkDocker () =
   async {
     do! initTool "docker" DockerWrapper.dockerPath
     do! initTool "docker-machine" DockerMachineWrapper.dockerMachinePath
+    do! initTool "chroot" HostInteraction.chrootPath
 
     if Env.isVerbose then
         printfn "Found docker at: '%s'" !DockerWrapper.dockerPath
         printfn "Found docker-machine at: '%s'" !DockerMachineWrapper.dockerMachinePath
+        printfn "Found chroot at: '%s'" !DockerMachineWrapper.dockerMachinePath
     
     // Check if docker works
     if Env.isLinux && not (System.IO.File.Exists("/var/run/docker.sock")) then

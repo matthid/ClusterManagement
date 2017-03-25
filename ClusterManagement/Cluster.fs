@@ -1,9 +1,5 @@
 ﻿namespace ClusterManagement
 
-type NodeType =
-    | Master
-    | Worker
-    | MasterWorker
 
 module Cluster =
     let encrypt cluster secret =
@@ -174,29 +170,12 @@ module Cluster =
     let provision clusterName (nodeName:string) nodeType =
       async {
         // Setup configuration and stop services
-        let hostRoot = "/host-root"
+        let hostRoot = "/host"
         if not <| Directory.Exists hostRoot then
-            failwith "Make sure the hosts-root filesystem is mounted at /host-root with '-v /:/host-root'!"
+            failwith "Make sure the hosts-root filesystem is mounted at /host with '-v /:/host'!"
 
-        if Env.isVerbose then printfn "stopping services."
-        for service in [ "flocker-control-service"; "flocker-control-agent"; "flocker-dataset-agent"; "flocker-docker-plugin" ] do
-            let! res =
-                [|"kill"; service|]
-                |> Arguments.OfArgs
-                |> DockerWrapper.createProcess
-                |> CreateProcess.redirectOutput
-                |> CreateProcess.warnOnExitCode "Failed to kill container"
-                |> Proc.startAndAwait
+        do! HostInteraction.stopFlocker()
 
-            let! res =
-                [|"rm"; service|]
-                |> Arguments.OfArgs
-                |> DockerWrapper.createProcess
-                |> CreateProcess.redirectOutput
-                |> CreateProcess.warnOnExitCode  "Failed to remove container"
-                |> Proc.startAndAwait
-            
-            ()   
         if Env.isVerbose then printfn "setup config."
         let flockerDir = Path.Combine (hostRoot, "etc", "flocker")
         if Directory.Exists flockerDir then
@@ -216,53 +195,7 @@ module Cluster =
         if Directory.Exists flockerPluginDir then
             Directory.Delete (flockerPluginDir, true)
 
-        let initAsMaster =
-            match nodeType with
-            | NodeType.MasterWorker
-            | NodeType.Master -> true
-            | NodeType.Worker -> false
-            
-        let initAsWorker =
-            match nodeType with
-            | NodeType.MasterWorker
-            | NodeType.Worker -> true
-            | NodeType.Master -> false
-        if Env.isVerbose then printfn "starting services."
-        // Start flocker control service
-        if nodeName.EndsWith "master-01" then
-            let! res = 
-                (sprintf "run --name=flocker-control-volume -v /var/lib/flocker %s:%s true" DockerImages.flockerControlService DockerImages.flockerTag)
-                |> Arguments.OfWindowsCommandLine
-                |> DockerWrapper.createProcess
-                |> CreateProcess.redirectOutput
-                |> CreateProcess.warnOnExitCode "Failed to create volume container, it might already exist"
-                |> Proc.startAndAwait
-            
-            do! 
-                (sprintf "run --restart=always -d --net=host -v /etc/flocker:/etc/flocker --volumes-from=flocker-control-volume --name=flocker-control-service %s:%s" DockerImages.flockerControlService DockerImages.flockerTag)
-                |> Arguments.OfWindowsCommandLine
-                |> DockerWrapper.createProcess
-                |> CreateProcess.ensureExitCode
-                |> Proc.startAndAwait
-                |> Async.Ignore
-
-        // Flocker container agent
-        do!
-            (sprintf "run --restart=always -d --net=host --privileged -v /flocker:/flocker -v /:/host -v /etc/flocker:/etc/flocker -v /dev:/dev --name=flocker-dataset-agent %s:%s" DockerImages.flockerDatasetAgent DockerImages.flockerTag)
-            |> Arguments.OfWindowsCommandLine
-            |> DockerWrapper.createProcess
-            |> CreateProcess.ensureExitCode
-            |> Proc.startAndAwait
-            |> Async.Ignore
-
-        // flocker docker plugin
-        do!
-            (sprintf "run --restart=always -d --net=host -v /etc/flocker:/etc/flocker -v /run/docker:/run/docker --name=flocker-docker-plugin %s:%s" DockerImages.flockerDockerPlugin DockerImages.flockerTag)
-            |> Arguments.OfWindowsCommandLine
-            |> DockerWrapper.createProcess
-            |> CreateProcess.ensureExitCode
-            |> Proc.startAndAwait
-            |> Async.Ignore
+        do! HostInteraction.installFlocker nodeName nodeType
 
         if Env.isVerbose then printfn "machine successfully provisioned."
         
@@ -286,12 +219,12 @@ module Cluster =
         
         if Env.isVerbose then printfn "checking config."
 
-        Providers.ensureConfig clusterName cc
+        CloudProviders.ensureConfig clusterName cc
 
         
         if Env.isVerbose then printfn "extracting config."
         
-        let replacedAgentYml = Providers.getAgentConfig clusterName cc
+        let replacedAgentYml = CloudProviders.getAgentConfig clusterName cc
         
         if Env.isVerbose then printfn "provision nodes."
         let nodeDir = StoragePath.getNodesDir clusterName
@@ -315,7 +248,7 @@ module Cluster =
             if res.ExitCode = 0 then // already exists
                 eprintfn "Machine '%s' seems to be already existing, reusing..." machine
             else
-                do! Providers.createMachine clusterName machine cc
+                do! CloudProviders.createMachine clusterName machine cc
                 ()
 
             Storage.quickSaveClusterWithStoredSecret clusterName
@@ -323,7 +256,7 @@ module Cluster =
             // Get IP and ensure networking
             match t with
             | Storage.NodeType.PrimaryMaster ->
-                do! Providers.allowInternalNetworking clusterName cc
+                do! CloudProviders.allowInternalNetworking clusterName cc
                 let! ip =
                     DockerMachine.getEth0Ip clusterName nodeName
                     |> Proc.startAndAwait
@@ -366,7 +299,7 @@ module Cluster =
                 | Storage.NodeType.Master -> "master"
             do!
                 DockerMachine.createProcess clusterName 
-                    (sprintf "ssh %s sudo docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v /:/host-root %s %s provision --cluster %s --nodename %s --nodetype %s" 
+                    (sprintf "ssh %s sudo docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v /:/host %s %s provision --cluster %s --nodename %s --nodetype %s" 
                         machine DockerImages.clusterManagement (if Env.isVerbose then "-v" else "")
                         clusterName nodeName nodeType
                      |> Arguments.OfWindowsCommandLine)

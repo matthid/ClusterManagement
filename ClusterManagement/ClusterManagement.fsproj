@@ -64,7 +64,8 @@
     <Compile Include="DockerMachine.fs" />
     <Compile Include="Volume.fs" />
     <Compile Include="Deploy.fs" />
-    <Compile Include="Providers.fs" />
+    <Compile Include="CloudProviders.fs" />
+    <Compile Include="HostInteraction.fs" />
     <Compile Include="Cluster.fs" />
     <Compile Include="ImportExport.fs" />
     <Compile Include="ServeConfig.fs" />
