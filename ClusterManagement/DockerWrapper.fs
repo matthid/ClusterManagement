@@ -288,6 +288,7 @@ module DockerMachineWrapper =
         |> CreateProcess.redirectOutput
         |> CreateProcess.ensureExitCode
         |> Proc.startAndAwait
+        |> Async.Ignore
 
     let createProcess confDir args =
         let t = dockerMachineStoragePath
