@@ -28,32 +28,40 @@ module DockerMachine =
                 File.WriteAllText (awsCredentials, IO.getResourceText "aws_credentials" |> Config.replaceTokens tokens)
             with _ -> cleanup(); reraise()
             { new IProcessHook with
-                member x.ProcessExited _ = ()
-                member x.ParseSuccess _ = ()
-                member x.Dispose () = cleanup() }
+                member __.ProcessExited _ = ()
+                member __.ParseSuccess _ = ()
+                member __.Dispose () = cleanup() }
             )
 
     let ssh cluster nodeName command =
         let machineName = getMachineName cluster nodeName
         let args = command |> Arguments.OfWindowsCommandLine
+        if args.Args.Length < 0 then failwith "zero arguments (empty command) is not supported right now..."
         //let cmd = args.Args.[0]
         //let restArgs = { Args = args.Args.[1..args.Args.Length - 1] }
-        let usingArgs =
-            //if cmd = "sudo" then
-            //    ([|"ssh"; machineName; "echo"; restArgs.ToWindowsCommandLine |> CmdLineParsing.escapeCommandLineForShell |] |> Arguments.OfArgs)
-            //else
-                ([|yield "ssh"; yield machineName; yield! args.Args |] |> Arguments.OfArgs)
+        //let usingArgs = ([|yield "ssh"; yield machineName; yield! args.Args |] |> Arguments.OfArgs)
+        // ssh ALWAYS executes commands with $SHELL -c 'command', see http://serverfault.com/a/823466/158394
+        // see http://unix.stackexchange.com/questions/184031/can-a-command-be-executed-over-ssh-with-a-nologin-user/184127
+        // see http://unix.stackexchange.com/questions/10852/whats-the-difference-between-sbin-nologin-and-bin-false/10867#10867
+        // TODO: The correct way -> Detect remote shell (echo $SHELL) and escape accordingly..
+        let usingArgs = ([|yield "ssh"; yield machineName; yield args.ToLinuxShellCommandLine |] |> Arguments.OfArgs)
         createProcess cluster usingArgs
 
     let sshExt cluster nodeName (createProcess:CreateProcess<_>) =
         let cmdLine =
             match createProcess.Command with
             | ShellCommand s -> s
-            | RawCommand (f, arg) -> sprintf "%s %s" f arg.ToWindowsCommandLine
+            | RawCommand (f, arg) -> sprintf "%s %s" (Path.GetFileNameWithoutExtension f) arg.ToWindowsCommandLine
         ssh cluster nodeName cmdLine
         |> CreateProcess.withResultFunc createProcess.GetResult
         |> CreateProcess.addSetup createProcess.Setup
     
+    let runSudoDockerOnNode cluster nodeName proc =
+        proc
+        |> CreateProcess.mapFilePath (fun _ -> "docker")
+        |> Sudo.wrapCommand
+        |> sshExt cluster nodeName
+
     let getExternalIp cluster nodeName =
         let runIp arguments =
             CreateProcess.fromRawCommand "ip" arguments
@@ -75,15 +83,6 @@ module DockerMachine =
         |> CreateProcess.redirectOutput
         |> CreateProcess.map (fun r -> parseInspectJson (r.Output.Trim()))
       
-
-    let runDockerOnNode cluster nodeName dockerCommand =
-        dockerCommand
-        |> CreateProcess.withCommand 
-            (match dockerCommand.Command with
-             | ShellCommand _ -> invalidOp "expected RawCommand"
-             | RawCommand (_, args) -> RawCommand("sudo docker", args))
-        |> sshExt cluster nodeName
-
     let internal parseIfConfig (ifConfigOut:string) =
         ifConfigOut.Split ([|'\r';'\n'|], System.StringSplitOptions.RemoveEmptyEntries)
         |> Seq.tryFind (fun line -> line.Contains "inet addr")
@@ -118,6 +117,7 @@ module DockerMachine =
         getIpFromInterface networkInterface
         |> sshExt cluster nodeName
 
+
     let getDockerIp cluster nodeName =
         getIp "docker0" cluster nodeName
     let getEth0Ip cluster nodeName =
@@ -125,19 +125,19 @@ module DockerMachine =
 
     let runDockerPs cluster nodeName =
         DockerWrapper.ps ()
-        |> runDockerOnNode cluster nodeName
+        |> runSudoDockerOnNode cluster nodeName
         
     let internal runDockerInspect cluster nodeName containerId =
         DockerWrapper.inspect containerId
-        |> runDockerOnNode cluster nodeName
+        |> runSudoDockerOnNode cluster nodeName
 
     let runDockerKill cluster nodeName containerId =
         DockerWrapper.kill containerId
-        |> runDockerOnNode cluster nodeName
+        |> runSudoDockerOnNode cluster nodeName
 
     let runDockerRemove cluster nodeName force containerId =
         DockerWrapper.remove force containerId
-        |> runDockerOnNode cluster nodeName
+        |> runSudoDockerOnNode cluster nodeName
 
     let remove force cluster machineName =
         createProcess cluster ([| yield "rm"; if force then yield "-f"; yield "-y"; yield machineName |] |> Arguments.OfArgs)

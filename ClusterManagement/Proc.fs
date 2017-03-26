@@ -16,7 +16,7 @@ module StreamExtensions =
                 member __.CanTimeout = target1.CanTimeout || target2.CanTimeout
                 member __.CanWrite = true
                 member __.Length = target1.Length
-                member __.Position with get () = target1.Position and set v = notsupported()
+                member __.Position with get () = target1.Position and set _ = notsupported()
                 member __.Flush () = target1.Flush(); target2.Flush()
                 member __.FlushAsync (tok) = 
                     async {
@@ -72,7 +72,7 @@ module StreamExtensions =
                     let read = readStream.Read(buffer, offset, count)
                     track.Write(buffer, offset, read)
                     read
-                override __.ReadAsync (buffer, offset, count, tok) =
+                override __.ReadAsync (buffer, offset, count, _) =
                   async {
                     let! read = readStream.ReadAsync(buffer, offset, count)
                     do! track.WriteAsync(buffer, offset, read)
@@ -168,9 +168,9 @@ type CreateProcess<'TRes> =
 module CreateProcess  =
     let emptyHook =
         { new IProcessHook with
-            member x.Dispose () = ()
-            member x.ProcessExited _ = ()
-            member x.ParseSuccess _ = () }
+            member __.Dispose () = ()
+            member __.ProcessExited _ = ()
+            member __.ParseSuccess _ = () }
     let fromCommand command =
         {   Command = command
             WorkingDirectory = None
@@ -232,11 +232,21 @@ module CreateProcess  =
         { c with
             Command = command }
 
+    let replaceFilePath newFilePath (c:CreateProcess<_>)=
+        { c with
+            Command =
+                match c.Command with
+                | ShellCommand s -> failwith "Expected RawCommand"
+                | RawCommand (_, c) -> RawCommand(newFilePath, c) }
+    let mapFilePath f (c:CreateProcess<_>)=
+        c
+        |> replaceFilePath (f (match c.Command with ShellCommand s -> failwith "Expected RawCommand" | RawCommand (file, _) -> f file))
+
     let private combine (d1:IProcessHook) (d2:IProcessHook) =
         { new IProcessHook with
-            member x.Dispose () = d1.Dispose(); d2.Dispose()
-            member x.ProcessExited e = d1.ProcessExited(e); d2.ProcessExited(e)
-            member x.ParseSuccess e = d1.ParseSuccess(e); d2.ParseSuccess(e) }
+            member __.Dispose () = d1.Dispose(); d2.Dispose()
+            member __.ProcessExited e = d1.ProcessExited(e); d2.ProcessExited(e)
+            member __.ParseSuccess e = d1.ParseSuccess(e); d2.ParseSuccess(e) }
     let addSetup f (c:CreateProcess<_>) =
         { c with
             Setup = fun _ -> combine (c.Setup()) (f()) }
@@ -295,10 +305,10 @@ module CreateProcess  =
         r
         |> addSetup (fun _ ->
            { new IProcessHook with
-                member x.Dispose () = ()
-                member x.ProcessExited exitCode =
+                member __.Dispose () = ()
+                member __.ProcessExited exitCode =
                     if exitCode <> 0 then f exitCode
-                member x.ParseSuccess _ = () })
+                member __.ParseSuccess _ = () })
     let ensureExitCodeWithMessage msg (r:CreateProcess<_>) =
         r
         |> addOnExited (fun exitCode ->

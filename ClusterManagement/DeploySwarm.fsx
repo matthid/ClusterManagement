@@ -14,7 +14,7 @@ let mutable primaryMasterManagerToken = Unchecked.defaultof<_>
 let masterNum = d.Nodes |> Seq.sumBy (fun n -> match n.Type with Storage.NodeType.PrimaryMaster -> 1 | Storage.NodeType.Master -> 1 | Storage.NodeType.Worker -> 0)
 
 // Kill current swarm services
-let runDockerRaw node args = DockerMachine.runDockerOnNode d.ClusterName node args |> Proc.startRaw |> fun t -> t.GetAwaiter().GetResult()
+let runDockerRaw node args = DockerMachine.runSudoDockerOnNode d.ClusterName node args |> Proc.startRaw |> fun t -> t.GetAwaiter().GetResult()
 let runDockerE node cmd =
     DockerWrapper.createProcess (cmd |> Arguments.OfWindowsCommandLine)
     |> CreateProcess.redirectOutput

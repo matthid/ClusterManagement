@@ -181,6 +181,7 @@ module DockerWrapper =
         sprintf "run --net=host --rm -e FLOCKER_CERTS_PATH=\"/etc/flocker\" -e FLOCKER_USER=\"flockerctl\" -e FLOCKER_CONTROL_SERVICE=\"${CLUSTER_NAME}-01\" -e CONTAINERIZED=1 -v /:/host -v $PWD:/pwd:z clusterhq/uft:latest flockerctl %s" args
         |> Arguments.OfWindowsCommandLine
         |> createProcess
+        |> Bash.wrapToEvaluateArguments // for $PWD and ${CLUSTER_NAME}
         |> CreateProcess.redirectOutput
         |> CreateProcess.map (fun output -> output.Output)
 

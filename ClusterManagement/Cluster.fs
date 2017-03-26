@@ -340,12 +340,12 @@ module Cluster =
         // shutdown all services.
         let! services = 
             DockerWrapper.listServices ()
-            |> DockerMachine.runDockerOnNode clusterName "master-01"
+            |> DockerMachine.runSudoDockerOnNode clusterName "master-01"
             |> Proc.startAndAwait
 
         for service in services do
             do! DockerWrapper.removeService service.Id
-                |> DockerMachine.runDockerOnNode clusterName "master-01"
+                |> DockerMachine.runSudoDockerOnNode clusterName "master-01"
                 |> CreateProcess.ensureExitCode
                 |> Proc.startAndAwait
 
@@ -360,7 +360,7 @@ module Cluster =
                         // might have been deleted already (above), but just to be safe...
                         let! res = 
                             DockerWrapper.removeService service
-                            |> DockerMachine.runDockerOnNode clusterName n.Name
+                            |> DockerMachine.runSudoDockerOnNode clusterName n.Name
                             |> CreateProcess.redirectOutput
                             |> Proc.startRaw
                             |> Async.AwaitTask

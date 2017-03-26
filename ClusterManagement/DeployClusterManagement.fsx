@@ -9,7 +9,7 @@ if Env.isVerbose then
     printfn "Deploying ClusterManagement to cluster '%s'" d.ClusterName
     
 
-let runDockerRaw node args = DockerMachine.runDockerOnNode d.ClusterName node args |> Proc.startRaw |> fun t -> t.GetAwaiter().GetResult()
+let runDockerRaw node args = DockerMachine.runSudoDockerOnNode d.ClusterName node args |> Proc.startRaw |> fun t -> t.GetAwaiter().GetResult()
 let runDockerE node cmd =
     DockerWrapper.createProcess (cmd |> Arguments.OfWindowsCommandLine)
     |> CreateProcess.redirectOutput

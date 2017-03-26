@@ -5,12 +5,6 @@ type NodeType =
     | Worker
     | MasterWorker
 
-module Bash =
-    let runCommand command =
-        let usingArgs =
-            ([| yield "-c"; yield command |] |> Arguments.OfArgs)
-        CreateProcess.fromCommand (RawCommand ("/bin/bash", usingArgs))
-
 module HostInteraction =
     let chrootPath = ref "chroot"
         
@@ -173,7 +167,7 @@ Pin-Priority: 700""")
                     || inspect.Name.Contains "flocker-dataset-agent" 
                     || inspect.Name.Contains "flocker-docker-plugin" then
                         do! DockerWrapper.createProcess ([|"restart"; container.ContainerId|] |> Arguments.OfArgs)
-                            |> DockerMachine.runDockerOnNode clusterName n.Name
+                            |> DockerMachine.runSudoDockerOnNode clusterName n.Name
                             |> CreateProcess.ensureExitCode
                             |> Proc.startAndAwait
         | Ubuntu16_04 ->

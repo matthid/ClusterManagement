@@ -58,6 +58,7 @@
     <Compile Include="CmdLineParsing.fs" />
     <Compile Include="IO.fs" />
     <Compile Include="Proc.fs" />
+    <Compile Include="Bash.fs" />
     <Compile Include="DockerWrapper.fs" />
     <Compile Include="Which.fs" />
     <Compile Include="ZipFile.fs" />

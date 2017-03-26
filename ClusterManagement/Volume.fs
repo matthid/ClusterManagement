@@ -8,8 +8,11 @@ module Volume =
                 (sprintf "run --net=host --rm -e FLOCKER_CERTS_PATH=/etc/flocker -e FLOCKER_USER=flockerctl -e FLOCKER_CONTROL_SERVICE=\"%s-master-01\" -e CONTAINERIZED=1 -v /:/host -v $PWD:/pwd:z clusterhq/uft:latest flockerctl %s"
                     cluster flockerCtlArgs
                  |> Arguments.OfWindowsCommandLine)
+            |> CreateProcess.mapFilePath (fun _ -> "docker")
+            |> Bash.wrapToEvaluateArguments // for $PWD and ${CLUSTER_NAME}
+            |> Sudo.wrapCommand
             |> CreateProcess.redirectOutput
-            |> DockerMachine.runDockerOnNode cluster node
+            |> DockerMachine.sshExt cluster node
             |> Proc.startRaw
             |> Async.AwaitTask
 
@@ -135,7 +138,7 @@ module Volume =
       async {
         do!
             DockerWrapper.remove true "backup-volume-helper"
-            |> DockerMachine.runDockerOnNode cluster "master-01"
+            |> DockerMachine.runSudoDockerOnNode cluster "master-01"
             |> Proc.startAndAwait
 
         let! containerId =
@@ -146,13 +149,13 @@ module Volume =
             |> CreateProcess.redirectOutput
             |> CreateProcess.ensureExitCode
             |> CreateProcess.map (fun r -> r.Output.Trim())
-            |> DockerMachine.runDockerOnNode cluster "master-01"
+            |> DockerMachine.runSudoDockerOnNode cluster "master-01"
             |> Proc.startAndAwait
         
         try
             let! parsed =
                 DockerWrapper.inspect containerId
-                |> DockerMachine.runDockerOnNode cluster "master-01"
+                |> DockerMachine.runSudoDockerOnNode cluster "master-01"
                 |> Proc.startAndAwait
 
             match parsed.Mounts |> List.filter (fun m -> m.Driver = Some "flocker" && m.Name = Some volName) with
@@ -179,7 +182,7 @@ module Volume =
 
         finally
             DockerWrapper.remove true containerId
-            |> DockerMachine.runDockerOnNode cluster "master-01"
+            |> DockerMachine.runSudoDockerOnNode cluster "master-01"
             |> Proc.startAndAwait
             |> Async.RunSynchronously
 

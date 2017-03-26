@@ -20,7 +20,7 @@ let rawWorkerNum =  d.Nodes.Length - rawMasterNum
 let masterNum = max rawMasterNum 3
 let workerNum = max rawWorkerNum 2
 
-let runDockerRaw node args = DockerMachine.runDockerOnNode d.ClusterName node args |> Proc.startRaw |> fun t -> t.GetAwaiter().GetResult()
+let runDockerRaw node args = DockerMachine.runSudoDockerOnNode d.ClusterName node args |> Proc.startRaw |> fun t -> t.GetAwaiter().GetResult()
 let runDockerE node cmd =
     DockerWrapper.createProcess (cmd |> Arguments.OfWindowsCommandLine)
     |> CreateProcess.redirectOutput
@@ -52,7 +52,7 @@ for master in [ 1 .. masterNum ] do
         if ip.Addr <> "10.0.0.2" then failwithf "expected ip 10.0.0.2, but was %s" ip.Addr
     else
         runDocker 
-            (sprintf "service create --name consul-master-%02d --mount type=volume,src=%s,dst=/consul/data,volume-driver=flocker --network swarm-net --constraint node.role==manager -e \"CONSUL_BIND_INTERFACE=eth0\" -e 'CONSUL_LOCAL_CONFIG={\\\"skip_leave_on_interrupt\\\":true}\" consul agent -server -retry-join=10.0.0.3 -bootstrap-expect=%d -client=0.0.0.0 -retry-interval 5s"
+            (sprintf "service create --name consul-master-%02d --mount type=volume,src=%s,dst=/consul/data,volume-driver=flocker --network swarm-net --constraint node.role==manager -e \"CONSUL_BIND_INTERFACE=eth0\" -e \"CONSUL_LOCAL_CONFIG={\\\"skip_leave_on_interrupt\\\":true}\" consul agent -server -retry-join=10.0.0.3 -bootstrap-expect=%d -client=0.0.0.0 -retry-interval 5s"
                 master volName masterNum)
             |> Proc.ensureExitCodeGetResult
             |> ignore
