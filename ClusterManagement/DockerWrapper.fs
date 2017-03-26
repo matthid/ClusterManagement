@@ -285,6 +285,7 @@ module DockerMachineWrapper =
     let dockerMachineStoragePath = "/docker-machine/storage"
     let ensureWorking() =
         CreateProcess.fromRawCommand !dockerMachinePath [|"version"|]
+        |> CreateProcess.redirectOutput
         |> CreateProcess.ensureExitCode
         |> Proc.startAndAwait
 
