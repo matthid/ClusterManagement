@@ -181,15 +181,15 @@ module Cluster =
         if Directory.Exists flockerDir then
             Directory.Delete (flockerDir, true)
 
-        Env.cp { Env.CopyOptions.Default with IsRecursive = true; IntegrateExisting = true }
+        IO.cp { IO.CopyOptions.Default with IsRecursive = true; IntegrateExisting = true }
             (Path.Combine (hostRoot, "yaaf-provision", "machine", "etc", "flocker"))
             (flockerDir)
 
-        Env.chmod Env.CmodOptions.None (LanguagePrimitives.EnumOfValue 0o0700u) flockerDir
+        IO.chmod IO.CmodOptions.None (LanguagePrimitives.EnumOfValue 0o0700u) flockerDir
         for keyFile in [ "node.key"; "control-service.key"; "plugin.key"; "flockerctl.key" ] do
             let f = Path.Combine(flockerDir, keyFile)
             if File.Exists f then
-                Env.chmod Env.CmodOptions.None (LanguagePrimitives.EnumOfValue 0o0600u) f
+                IO.chmod IO.CmodOptions.None (LanguagePrimitives.EnumOfValue 0o0600u) f
         
         let flockerPluginDir = Path.Combine(hostRoot, "run", "docker", "plugins", "flocker")
         if Directory.Exists flockerPluginDir then
@@ -297,6 +297,14 @@ module Cluster =
                 | Storage.NodeType.Worker -> "worker"
                 | Storage.NodeType.PrimaryMaster
                 | Storage.NodeType.Master -> "master"
+
+            // Update tag (useful for development)
+            do!
+                DockerMachine.createProcess clusterName 
+                    (sprintf "ssh %s sudo docker pull %s" machine DockerImages.clusterManagement
+                     |> Arguments.OfWindowsCommandLine)
+                |> CreateProcess.ensureExitCodeWithMessage "failed to provision machine."
+                |> Proc.startAndAwait
             do!
                 DockerMachine.createProcess clusterName 
                     (sprintf "ssh %s sudo docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v /:/host %s %s provision --cluster %s --nodename %s --nodetype %s" 
@@ -325,8 +333,45 @@ module Cluster =
         // Deploy Vault
         Deploy.deployIntegrated clusterName "DeployVault.fsx"
       }
+      
+    // Kill all containers which block deletion of volumes
+    let private killBlockingServices (d:DeployInfo) clusterName =
+        async {
+        // shutdown all services.
+        let! services = 
+            DockerWrapper.listServices ()
+            |> DockerMachine.runDockerOnNode clusterName "master-01"
+            |> Proc.startAndAwait
 
-    let destroy clusterName =
+        for service in services do
+            do! DockerWrapper.removeService service.Id
+                |> DockerMachine.runDockerOnNode clusterName "master-01"
+                |> CreateProcess.ensureExitCode
+                |> Proc.startAndAwait
+
+        for n in d.Nodes do
+            let! containers = DockerMachine.runDockerPs clusterName n.Name |> Proc.startAndAwait
+            for container in containers do
+                let! inspect = DockerMachine.runDockerInspect clusterName n.Name container.ContainerId |> Proc.startAndAwait
+                if inspect.Mounts
+                    |> Seq.exists (fun m -> m.Driver = Some "flocker") then
+                    match inspect.Config.Labels.ComDockerSwarmServiceName with
+                    | Some service ->
+                        // might have been deleted already (above), but just to be safe...
+                        let! res = 
+                            DockerWrapper.removeService service
+                            |> DockerMachine.runDockerOnNode clusterName n.Name
+                            |> CreateProcess.redirectOutput
+                            |> Proc.startRaw
+                            |> Async.AwaitTask
+                        let stdOut = res.Result.Error
+                        if stdOut.Contains "not found" then ()
+                        else res |> Proc.ensureExitCodeGetResult |> ignore
+                    | None ->
+                        do! DockerMachine.runDockerKill clusterName n.Name container.ContainerId |> Proc.startAndAwait
+                        do! DockerMachine.runDockerRemove clusterName n.Name false container.ContainerId |> Proc.startAndAwait
+        }
+    let destroy force clusterName =
       async {
         Storage.openClusterWithStoredSecret clusterName
         let cc = ClusterConfig.readClusterConfig clusterName
@@ -334,84 +379,44 @@ module Cluster =
         if not isInit then
             eprintfn "WARN: Cluster is not initialized. No-op."
         else
-            // Kill all containers which block deletion of volumes
             let d = Deploy.getInfoInternal clusterName [||]
-            let killBlockingServices () =
-              async {
-                // shutdown all services.
-                let! services = 
-                    DockerWrapper.listServices ()
-                    |> DockerMachine.runDockerOnNode clusterName "master-01"
-                    |> Proc.startAndAwait
-
-                for service in services do
-                    do! DockerWrapper.removeService service.Id
-                        |> DockerMachine.runDockerOnNode clusterName "master-01"
-                        |> CreateProcess.ensureExitCode
-                        |> Proc.startAndAwait
-
-                for n in d.Nodes do
-                    let! containers = DockerMachine.runDockerPs clusterName n.Name |> Proc.startAndAwait
-                    for container in containers do
-                        let! inspect = DockerMachine.runDockerInspect clusterName n.Name container.ContainerId |> Proc.startAndAwait
-                        if inspect.Mounts
-                           |> Seq.exists (fun m -> m.Driver = Some "flocker") then
-                            match inspect.Config.Labels.ComDockerSwarmServiceName with
-                            | Some service ->
-                                // might have been deleted already (above), but just to be safe...
-                                let! res = 
-                                    DockerWrapper.removeService service
-                                    |> DockerMachine.runDockerOnNode clusterName n.Name
-                                    |> CreateProcess.redirectOutput
-                                    |> Proc.startRaw
-                                    |> Async.AwaitTask
-                                let stdOut = res.Result.Error
-                                if stdOut.Contains "not found" then ()
-                                else res |> Proc.ensureExitCodeGetResult |> ignore
-                            | None ->
-                                do! DockerMachine.runDockerKill clusterName n.Name container.ContainerId |> Proc.startAndAwait
-                                do! DockerMachine.runDockerRemove clusterName n.Name false container.ContainerId |> Proc.startAndAwait
-              }
-            do! killBlockingServices()
+            try
+                do! killBlockingServices d clusterName
             
-            // Clear/Delete volumes -> Sets them to status "deleting"
-            let! datasets = Volume.list clusterName
-            for d in datasets do
-                do! Volume.destroy clusterName d.Dataset
+                // Clear/Delete volumes -> Sets them to status "deleting"
+                let! datasets = Volume.list clusterName
+                for d in datasets do
+                    do! Volume.destroy clusterName d.Dataset
 
-            // Give flocker some time to act and delete its nodes
-            let mutable containsItems = true
-            let mutable iter = 0
-            let maxIter = 2000
-            while containsItems && iter < maxIter do
-                let! items = Volume.list clusterName
-                containsItems <- not items.IsEmpty
-                iter <- iter + 1
-                if containsItems then
-                    eprintfn "Give flocker some time to cleanup.., missing:\n%A" items
-                    do! Async.Sleep 500
-                if iter % 120 = 0 then
-                    eprintfn "try restarting flocker instances"
-                    for n in d.Nodes do
-                        let! containers = DockerMachine.runDockerPs clusterName n.Name |> Proc.startAndAwait
-                        for container in containers do
-                            let! inspect = DockerMachine.runDockerInspect clusterName n.Name container.ContainerId |> Proc.startAndAwait
-                            if inspect.Name.Contains "flocker-control-service" 
-                            || inspect.Name.Contains "flocker-dataset-agent" 
-                            || inspect.Name.Contains "flocker-docker-plugin" then
-                                do! DockerWrapper.createProcess ([|"restart"; container.ContainerId|] |> Arguments.OfArgs)
-                                    |> DockerMachine.runDockerOnNode clusterName n.Name
-                                    |> CreateProcess.ensureExitCode
-                                    |> Proc.startAndAwait
-                    // again try to kill all services/containers
-                    do! killBlockingServices()
+                // Give flocker some time to act and delete its nodes
+                let mutable containsItems = true
+                let mutable iter = 0
+                let maxIter = 2000
+                while containsItems && iter < maxIter do
+                    let! items = Volume.list clusterName
+                    containsItems <- not items.IsEmpty
+                    iter <- iter + 1
+                    if containsItems then
+                        eprintfn "Give flocker some time to cleanup.., missing:\n%A" items
+                        do! Async.Sleep 500
+                    if iter % 120 = 0 then
+                        eprintfn "try restarting flocker instances"
+                        do! HostInteraction.restartFlocker clusterName d.Nodes
+                        // again try to kill all services/containers
+                        do! killBlockingServices d clusterName
             
-            if iter = maxIter then
-                eprintfn "COULD NOT DELETE ALL FLOCKER IMAGES. DATA MIGHT BE LEFT - PLEASE DELETE THEM IN YOUR AWS CONSOLE."
+                if iter = maxIter then
+                    eprintfn "COULD NOT DELETE ALL FLOCKER IMAGES. DATA MIGHT BE LEFT - PLEASE DELETE THEM YOURSELF (FOR EXAMPLE IN YOUR AWS CONSOLE)."
+            with e ->
+                if force then
+                    eprintfn "Error while deleting flocker images: %O" e
+                    eprintfn "COULD NOT DELETE ALL FLOCKER IMAGES. DATA MIGHT BE LEFT - PLEASE DELETE THEM YOURSELF (FOR EXAMPLE IN YOUR AWS CONSOLE)."
+                else
+                    raise <| exn("Could not cleanup flocker images. To continue and force the deletion of the docker machines, use force", e)
 
             // Clear/Delete docker-machines
             for n in d.Nodes do
-                do! DockerMachine.remove clusterName n.MachineName
+                do! DockerMachine.remove force clusterName n.MachineName
                     |> CreateProcess.ensureExitCodeWithMessage "failed to delete a machine!"
                     |> Proc.startAndAwait
             ClusterConfig.setClusterInitialized clusterName false

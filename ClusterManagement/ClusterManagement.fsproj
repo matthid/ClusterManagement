@@ -55,6 +55,8 @@
     <Compile Include="Event.fs" />
     <Compile Include="Async.fs" />
     <Compile Include="Env.fs" />
+    <Compile Include="CmdLineParsing.fs" />
+    <Compile Include="IO.fs" />
     <Compile Include="Proc.fs" />
     <Compile Include="DockerWrapper.fs" />
     <Compile Include="Which.fs" />
@@ -65,13 +67,14 @@
     <Compile Include="Volume.fs" />
     <Compile Include="Deploy.fs" />
     <Compile Include="CloudProviders.fs" />
-    <Compile Include="HostInteraction.fs" />
+    <Compile Include="MachineProvider.fs" />
     <Compile Include="Cluster.fs" />
     <Compile Include="ImportExport.fs" />
     <Compile Include="ServeConfig.fs" />
     <Compile Include="Cli.fs" />
     <Compile Include="Program.fs" />
     <None Include="TestScript.fsx" />
+    <None Include="TestMonoProcessStart.fsx" />
     <None Include="App.config" />
     <None Include="paket.references" />
     <None Include="cm-config.yml" />

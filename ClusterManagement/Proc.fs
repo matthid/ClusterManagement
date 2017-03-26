@@ -2,57 +2,6 @@
 open System.IO
 open System.Diagnostics
 
-type VolatileBarrier() =
-    [<VolatileField>]
-    let mutable isStopped = false
-    member __.Proceed = not isStopped
-    member __.Stop() = isStopped <- true
-
-[<AutoOpen>]
-module AsyncExtensions =
-
-    open System.Threading
-    open System.Threading.Tasks
-    let internal startImmediateAsTask (token:CancellationToken, computation : Async<_>, taskCreationOptions) : Task<_> =
-        if obj.ReferenceEquals(computation, null) then raise <| System.NullReferenceException("computation is null!")
-        let taskCreationOptions = defaultArg taskCreationOptions TaskCreationOptions.None
-        let tcs = new TaskCompletionSource<_>(taskCreationOptions)
-
-        // The contract: 
-        //      a) cancellation signal should always propagate to task
-        //      b) CancellationTokenSource that produced a token must not be disposed until the the task.IsComplete
-        // We are:
-        //      1) registering for cancellation signal here so that not to miss the signal
-        //      2) disposing the registration just before setting result/exception on TaskCompletionSource -
-        //              otherwise we run a chance of disposing registration on already disposed  CancellationTokenSource
-        //              (See (b) above)
-        //      3) ensuring if reg is disposed, we do SetResult
-        let barrier = VolatileBarrier()
-        let reg = token.Register(fun _ -> if barrier.Proceed then tcs.SetCanceled())
-        let task = tcs.Task
-        let disposeReg() =
-            barrier.Stop()
-            if not (task.IsCanceled) then reg.Dispose()
-
-        let a = 
-            async { 
-                try
-                    let! result = computation
-                    do 
-                        disposeReg()
-                        tcs.TrySetResult(result) |> ignore
-                with
-                |   e -> 
-                        disposeReg()
-                        tcs.TrySetException(e) |> ignore
-            }
-        Async.StartImmediate(a, token)
-        task
-    type Async with
-        static member StartImmediateAsTask (computation,?taskCreationOptions,?cancellationToken)=
-            let token = defaultArg cancellationToken Async.DefaultCancellationToken       
-            startImmediateAsTask(token,computation,taskCreationOptions)
-
 [<AutoOpen>]
 module StreamExtensions =
 
@@ -62,27 +11,27 @@ module StreamExtensions =
                 raise <| System.ArgumentException("Streams need to be writeable to combine them.")
             let notsupported () = raise <| System.InvalidOperationException("operation not suppotrted")
             { new System.IO.Stream() with
-                member x.CanRead = false
-                member x.CanSeek = false
-                member x.CanTimeout = target1.CanTimeout || target2.CanTimeout
-                member x.CanWrite = true
-                member x.Length = target1.Length
-                member x.Position with get () = target1.Position and set v = notsupported()
-                member x.Flush () = target1.Flush(); target2.Flush()
-                member x.FlushAsync (tok) = 
+                member __.CanRead = false
+                member __.CanSeek = false
+                member __.CanTimeout = target1.CanTimeout || target2.CanTimeout
+                member __.CanWrite = true
+                member __.Length = target1.Length
+                member __.Position with get () = target1.Position and set v = notsupported()
+                member __.Flush () = target1.Flush(); target2.Flush()
+                member __.FlushAsync (tok) = 
                     async {
                         do! target1.FlushAsync(tok)
                         do! target2.FlushAsync(tok)
                     }
                     |> Async.StartImmediateAsTask
                     :> System.Threading.Tasks.Task
-                member x.Seek (offset, origin) = notsupported()
-                member x.SetLength (l) = notsupported()
-                member x.Read (buffer, offset, count) = notsupported()
-                member x.Write (buffer, offset, count)=
+                member __.Seek (_, _) = notsupported()
+                member __.SetLength (_) = notsupported()
+                member __.Read (_, _, _) = notsupported()
+                member __.Write (buffer, offset, count)=
                     target1.Write(buffer, offset, count)
                     target2.Write(buffer, offset, count)
-                override x.WriteAsync(buffer, offset, count, tok) =
+                override __.WriteAsync(buffer, offset, count, tok) =
                     async {
                         let! child1 = 
                             target1.WriteAsync(buffer, offset, count, tok)
@@ -102,151 +51,40 @@ module StreamExtensions =
         static member InterceptStream (readStream:System.IO.Stream, track:System.IO.Stream)=
             if not readStream.CanRead || not track.CanWrite then 
                 raise <| System.ArgumentException("track Stream need to be writeable and readStream readable to intercept the readStream.")
-            let notsupported () = raise <| System.InvalidOperationException("operation not suppotrted")
             { new System.IO.Stream() with
-                member x.CanRead = true
-                member x.CanSeek = readStream.CanSeek
-                member x.CanTimeout = readStream.CanTimeout || track.CanTimeout
-                member x.CanWrite = readStream.CanWrite
-                member x.Length = readStream.Length
-                member x.Position with get () = readStream.Position and set v = readStream.Position <- v
-                member x.Flush () = readStream.Flush(); track.Flush()
-                member x.FlushAsync (tok) = 
+                member __.CanRead = true
+                member __.CanSeek = readStream.CanSeek
+                member __.CanTimeout = readStream.CanTimeout || track.CanTimeout
+                member __.CanWrite = readStream.CanWrite
+                member __.Length = readStream.Length
+                member __.Position with get () = readStream.Position and set v = readStream.Position <- v
+                member __.Flush () = readStream.Flush(); track.Flush()
+                member __.FlushAsync (tok) = 
                     async {
                         do! readStream.FlushAsync(tok)
                         do! track.FlushAsync(tok)
                     }
                     |> Async.StartImmediateAsTask
                     :> System.Threading.Tasks.Task
-                member x.Seek (offset, origin) = readStream.Seek(offset, origin)
-                member x.SetLength (l) = readStream.SetLength(l)
-                member x.Read (buffer, offset, count) =
+                member __.Seek (offset, origin) = readStream.Seek(offset, origin)
+                member __.SetLength (l) = readStream.SetLength(l)
+                member __.Read (buffer, offset, count) =
                     let read = readStream.Read(buffer, offset, count)
                     track.Write(buffer, offset, read)
                     read
-                override x.ReadAsync (buffer, offset, count, tok) =
+                override __.ReadAsync (buffer, offset, count, tok) =
                   async {
                     let! read = readStream.ReadAsync(buffer, offset, count)
                     do! track.WriteAsync(buffer, offset, read)
                     return read
                   }
                   |> Async.StartImmediateAsTask
-                member x.Write (buffer, offset, count)=
+                member __.Write (buffer, offset, count)=
                     readStream.Write(buffer, offset, count)
-                override x.WriteAsync(buffer, offset, count, tok) =
+                override __.WriteAsync(buffer, offset, count, tok) =
                     readStream.WriteAsync(buffer, offset, count, tok)
-                override x.Dispose(t) = if t then readStream.Dispose()
+                override __.Dispose(t) = if t then readStream.Dispose()
                 }
-module internal CmdLineParsing =
-    let escapeCommandLineForShell (cmdLine:string) =
-        sprintf "'%s'" (cmdLine.Replace("'", "'\\''"))
-    let windowsArgvToCommandLine args =
-        let escapeBackslashes (sb:System.Text.StringBuilder) (s:string) (lastSearchIndex:int) =
-            // Backslashes must be escaped if and only if they precede a double quote.
-            [ lastSearchIndex .. -1 .. 0]
-            |> Seq.takeWhile (fun i -> s.[i] = '\\')
-            //|> Seq.map (fun c -> )
-            //|> fun c -> Seq.replicate c '\\'
-            |> Seq.iter (fun c -> sb.Append '\\' |> ignore)
-        
-        let sb = new System.Text.StringBuilder()
-        for (s:string) in args do
-            sb.Append('"') |> ignore
-            // Escape double quotes (") and backslashes (\).
-            let mutable searchIndex = 0
-            
-            // Put this test first to support zero length strings.
-            let mutable quoteIndex = 0
-            while searchIndex < s.Length && quoteIndex >= 0 do
-
-                quoteIndex <- s.IndexOf('"', searchIndex)
-                if quoteIndex >= 0 then
-                    sb.Append(s, searchIndex, quoteIndex - searchIndex) |> ignore
-                    escapeBackslashes sb s (quoteIndex - 1)
-                    sb.Append('\\') |> ignore
-                    sb.Append('"') |> ignore
-                    searchIndex <- quoteIndex + 1
-            
-            sb.Append(s, searchIndex, s.Length - searchIndex) |> ignore
-            escapeBackslashes sb s (s.Length - 1)
-            sb.Append(@""" ") |> ignore
-        
-        sb.ToString(0, System.Math.Max(0, sb.Length - 1))
-
-    let windowsCommandLineToArgv (arguments:string) =
-        // https://github.com/dotnet/corefx/blob/master/src/System.Diagnostics.Process/src/System/Diagnostics/Process.Unix.cs#L443-L522
-        let currentArgument = new System.Text.StringBuilder()
-        let mutable inQuotes = false
-        let results = System.Collections.Generic.List<_>()
-
-        // Iterate through all of the characters in the argument string.
-        let mutable i = 0
-        while i < arguments.Length do
-            // From the current position, iterate through contiguous backslashes.
-            let mutable backslashCount = 0
-            while i < arguments.Length && arguments.[i] = '\\' do
-                i <- i + 1
-                backslashCount <- backslashCount + 1
-            if backslashCount > 0 then
-                if i > arguments.Length || arguments.[i] <> '"' then
-                    // Backslashes not followed by a double quote:
-                    // they should all be treated as literal backslashes.
-                    currentArgument.Append('\\', backslashCount) |> ignore
-                    i <- i - 1
-                else
-                    // Backslashes followed by a double quote:
-                    // - Output a literal slash for each complete pair of slashes
-                    // - If one remains, use it to make the subsequent quote a literal.
-                    currentArgument.Append('\\', backslashCount / 2) |> ignore
-                    if backslashCount % 2 = 0 then
-                        i <- i - 1
-                    else
-                        currentArgument.Append('"') |> ignore
-            else
-                let c = arguments.[i]
-                
-                match c with
-                // If this is a double quote, track whether we're inside of quotes or not.
-                // Anything within quotes will be treated as a single argument, even if
-                // it contains spaces.
-                | '"' ->
-                    inQuotes <-  not inQuotes
-                // If this is a space/tab and we're not in quotes, we're done with the current
-                // argument, and if we've built up any characters in the current argument,
-                // it should be added to the results and then reset for the next one.
-                | ' ' | '\t' when not inQuotes ->
-                    if currentArgument.Length > 0 then
-                        results.Add(currentArgument.ToString())
-                        currentArgument.Clear() |> ignore
-                // Nothing special; add the character to the current argument.
-                | _ ->
-                    currentArgument.Append(c) |> ignore
-            i <- i + 1
-
-        // If we reach the end of the string and we still have anything in our current
-        // argument buffer, treat it as an argument to be added to the results.
-        if currentArgument.Length > 0 then
-            results.Add(currentArgument.ToString())
-
-        results.ToArray()
-
-
-type FilePath = string
-type Arguments = 
-    { Args : string array }
-    static member Empty = { Args = [||] }
-    /// See https://msdn.microsoft.com/en-us/library/17w5ykft.aspx
-    static member OfWindowsCommandLine cmd =
-        { Args = CmdLineParsing.windowsCommandLineToArgv cmd }
-    /// This is the reverse of https://msdn.microsoft.com/en-us/library/17w5ykft.aspx
-    member x.ToWindowsCommandLine = CmdLineParsing.windowsArgvToCommandLine x.Args
-    member x.ToLinuxShellCommandLine =
-        System.String.Join(" ", x.Args |> Seq.map CmdLineParsing.escapeCommandLineForShell)
-    static member OfArgs args = { Args = args }
-    static member OfStartInfo cmd =
-        Arguments.OfWindowsCommandLine cmd
-    member internal x.ToStartInfo =
-        x.ToWindowsCommandLine
 
 type Command =
     | ShellCommand of string
@@ -600,7 +438,7 @@ module Proc =
         
         // wait for finish -> AwaitTask has a bug which makes it unusable for chanceled tasks.
         // workaround with continuewith
-        let! streams = all.ContinueWith (new System.Func<System.Threading.Tasks.Task<Stream[]>, Stream[]> (fun t -> t.Result)) |> Async.AwaitTask
+        let! streams = all.ContinueWith (new System.Func<System.Threading.Tasks.Task<Stream[]>, Stream[]> (fun t -> t.GetAwaiter().GetResult())) |> Async.AwaitTask
         for s in streams do s.Dispose()
         setEcho false |> ignore
         

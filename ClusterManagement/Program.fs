@@ -52,12 +52,15 @@ let handleArgs (argv:string array) =
     match results with
     | Choice1Of2 results ->
         Env.isVerbose <- results.Contains <@ MyArgs.Verbose @>
+        let printVersion () = printfn "Version: 0.1.0 (%O)" (System.Reflection.Assembly.GetExecutingAssembly().GetName().Version)
         if Env.isVerbose then
+            printVersion ()
+            printfn "Docker-Image: %s" DockerImages.clusterManagement
             printfn "%A %A" argv restArgs
             printfn "Interactive: %b" Env.isConsoleApp
             printfn "UserInterface: %b" Env.userInterface
-            printfn "IsConsoleSizeZero: %b" Env.isConsoleSizeZero
-            printfn "stdInTTy: %b" Env.stdInTTy
+            printfn "IsConsoleSizeZero: %b" IO.isConsoleSizeZero
+            printfn "stdInTTy: %b" IO.stdInTTy
             let stty = Which.getToolPath "stty" |> Async.RunSynchronously
             let res =
                 CreateProcess.fromRawCommand stty [|""|]
@@ -68,10 +71,10 @@ let handleArgs (argv:string array) =
         
         if not Env.isLinux then
             eprintfn "WARN: This program was currently only tested as matthid/clustermanagement dockerized app. Running it standalone (especially on windows) might lead to bugs."        
-        assert (Env.stdInTTy = (not Env.isConsoleSizeZero))
+        assert (IO.stdInTTy = (not IO.isConsoleSizeZero))
 
         if results.Contains(<@ MyArgs.Version @>) then
-            printfn "Version: 0.1.0"
+            printVersion ()
             0
         else
             match results.TryGetSubCommand() with
@@ -113,9 +116,10 @@ let handleArgs (argv:string array) =
                     |> Async.RunSynchronously
 
                     0
-                | Some (ClusterArgs.Destroy _) ->
+                | Some (ClusterArgs.Destroy destroyArgs) ->
                     let cluster = clusterRes.GetResult <@ ClusterArgs.Cluster @>
-                    Cluster.destroy cluster
+                    let force = destroyArgs.Contains <@ ClusterDestroyArgs.Force @>
+                    Cluster.destroy force cluster
                     |> Async.RunSynchronously
 
                     0

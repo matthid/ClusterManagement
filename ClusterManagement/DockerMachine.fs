@@ -24,8 +24,8 @@ module DockerMachine =
                 if restoreAwsConfig then File.Delete awsConfig; File.Move (awsConfig + ".backup", awsConfig)
             try
                 if Directory.Exists awsConfigDir |> not then Directory.CreateDirectory awsConfigDir |> ignore
-                File.WriteAllText (awsCredentials, Env.getResourceText "aws_config" |> Config.replaceTokens tokens)
-                File.WriteAllText (awsCredentials, Env.getResourceText "aws_credentials" |> Config.replaceTokens tokens)
+                File.WriteAllText (awsCredentials, IO.getResourceText "aws_config" |> Config.replaceTokens tokens)
+                File.WriteAllText (awsCredentials, IO.getResourceText "aws_credentials" |> Config.replaceTokens tokens)
             with _ -> cleanup(); reraise()
             { new IProcessHook with
                 member x.ProcessExited _ = ()
@@ -139,7 +139,7 @@ module DockerMachine =
         DockerWrapper.remove force containerId
         |> runDockerOnNode cluster nodeName
 
-    let remove cluster machineName =
-        createProcess cluster ([|"rm";"-y"; machineName |] |> Arguments.OfArgs)
+    let remove force cluster machineName =
+        createProcess cluster ([| yield "rm"; if force then yield "-f"; yield "-y"; yield machineName |] |> Arguments.OfArgs)
             
         

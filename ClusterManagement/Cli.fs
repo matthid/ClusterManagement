@@ -35,12 +35,12 @@ type ClusterDecryptEncryptArgs =
             | Secret _ -> "The secret to encrypt or decrypt the cluster with. If the cluster is already encrypted, the secret will be changed to the given one."
 
 type ClusterDestroyArgs =
-    | Dummy of string
+    | [<AltCommandLine("-f")>] Force
   with
     interface IArgParserTemplate with
         member this.Usage = 
             match this with
-            | Dummy _ -> "Dummy command line."
+            | Force _ -> "Force the deletion of the docker-machines, even when we encounter errors while cleaning up."
 type ClusterDeleteArgs =
     | [<AltCommandLine("-f")>] Force
   with

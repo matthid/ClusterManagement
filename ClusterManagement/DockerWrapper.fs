@@ -6,7 +6,30 @@ module DockerImages =
     let flockerDatasetAgent = "clusterhq/flocker-dataset-agent"
     let flockerDockerPlugin = "clusterhq/flocker-dockerplugin"
     let flockerCtl = "clusterhq/uft"
-    let clusterManagement = "matthid/clustermanagement"
+    let clusterManagementName, clusterManagementTag, clusterManagement =
+        let clusterManagementName = "matthid/clustermanagement"
+        let assembly = System.Reflection.Assembly.GetExecutingAssembly()
+        let assemblyLocation = assembly.Location
+        let versionInfo =
+            if System.String.IsNullOrEmpty assemblyLocation then null else System.Diagnostics.FileVersionInfo.GetVersionInfo(assemblyLocation)
+        let fileVersion = if isNull versionInfo then null else versionInfo.FileVersion
+        let clusterManagementTag =
+            if isNull fileVersion then
+                    match assembly.GetCustomAttributes(typeof<System.Reflection.AssemblyFileVersionAttribute>, true)
+                          |> Seq.tryHead with
+                    | Some a ->
+                        let attribute = a :?> System.Reflection.AssemblyFileVersionAttribute
+                        attribute.Version
+                    | None -> null
+            else fileVersion
+        clusterManagementName, clusterManagementTag,
+        if System.String.IsNullOrEmpty clusterManagementTag then
+            eprintfn "Could not read tag from FileVersion!"
+            eprintfn "Assembly Location: %s" assemblyLocation
+            eprintfn "Version Info: %A" versionInfo
+            eprintfn "Tag: %s" clusterManagementTag
+            clusterManagementName
+        else sprintf "%s:%s" clusterManagementName clusterManagementTag
 
 
 module DockerWrapper =
@@ -282,17 +305,17 @@ module DockerMachineWrapper =
             if System.IO.Directory.Exists t then
                 System.IO.Directory.Delete(t, true)
             System.IO.Directory.CreateDirectory(t) |> ignore
-            Env.cp { Env.CopyOptions.Default with IntegrateExisting = true; IsRecursive = true }
+            IO.cp { IO.CopyOptions.Default with IntegrateExisting = true; IsRecursive = true }
                 confDir t
             
-            Env.chmod Env.CmodOptions.Rec (LanguagePrimitives.EnumOfValue 0o0600u) t
+            IO.chmod IO.CmodOptions.Rec (LanguagePrimitives.EnumOfValue 0o0600u) t
 
             { new IProcessHook with
                 member x.Dispose () =
                     System.IO.Directory.Delete (t, true) 
                 member x.ProcessExited e =
                     System.IO.Directory.Delete(confDir, true)
-                    Env.cp { Env.CopyOptions.Default with IntegrateExisting = true; IsRecursive = true }
+                    IO.cp { IO.CopyOptions.Default with IntegrateExisting = true; IsRecursive = true }
                         t confDir
                 member x.ParseSuccess _ = ()
             })

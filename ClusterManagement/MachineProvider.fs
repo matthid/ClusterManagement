@@ -5,6 +5,12 @@ type NodeType =
     | Worker
     | MasterWorker
 
+module Bash =
+    let runCommand command =
+        let usingArgs =
+            ([| yield "-c"; yield command |] |> Arguments.OfArgs)
+        CreateProcess.fromCommand (RawCommand ("/bin/bash", usingArgs))
+
 module HostInteraction =
     let chrootPath = ref "chroot"
         
@@ -28,6 +34,7 @@ module HostInteraction =
             match createProcess.Command with
             | ShellCommand s -> s
             | RawCommand (f, arg) -> sprintf "%s %s" f arg.ToWindowsCommandLine
+            
         chrootHost cmdLine
         |> CreateProcess.withResultFunc createProcess.GetResult
         |> CreateProcess.addSetup createProcess.Setup
@@ -126,7 +133,9 @@ module HostInteraction =
             // see https://flocker-docs.clusterhq.com/en/latest/docker-integration/manual-install.html
             do! chrootHost "apt-get update" |> CreateProcess.ensureExitCode |> Proc.startAndAwait
             do! chrootHost "apt-get -y install apt-transport-https software-properties-common" |> CreateProcess.ensureExitCode |> Proc.startAndAwait
-            do! chrootHost "/bin/bash -c 'add-apt-repository -y \"deb https://clusterhq-archive.s3.amazonaws.com/ubuntu/$(lsb_release --release --short)/\\$(ARCH) /\"'" |> CreateProcess.ensureExitCode |> Proc.startAndAwait
+            do! 
+                "add-apt-repository -y \"deb https://clusterhq-archive.s3.amazonaws.com/ubuntu/$(lsb_release --release --short)/\\$(ARCH) /\""
+                |> Bash.runCommand |> chrootHostExt |> CreateProcess.ensureExitCode |> Proc.startAndAwait
             
             System.IO.File.WriteAllText ("/host/tmp/apt-pref", """Package: *
 Pin: origin clusterhq-archive.s3.amazonaws.com
@@ -149,5 +158,24 @@ Pin-Priority: 700""")
             do! chrootHost "systemctl enable flocker-docker-plugin" |> CreateProcess.ensureExitCode |> Proc.startAndAwait
             do! chrootHost "systemctl start flocker-docker-plugin" |> CreateProcess.ensureExitCode |> Proc.startAndAwait
 
+            ()
+      }
+
+    let restartFlocker clusterName nodes =
+      async {
+        match getSupportedHostInfo() with
+        | GenericDocker ->
+            for n in nodes do
+                let! containers = DockerMachine.runDockerPs clusterName n.Name |> Proc.startAndAwait
+                for container in containers do
+                    let! inspect = DockerMachine.runDockerInspect clusterName n.Name container.ContainerId |> Proc.startAndAwait
+                    if inspect.Name.Contains "flocker-control-service" 
+                    || inspect.Name.Contains "flocker-dataset-agent" 
+                    || inspect.Name.Contains "flocker-docker-plugin" then
+                        do! DockerWrapper.createProcess ([|"restart"; container.ContainerId|] |> Arguments.OfArgs)
+                            |> DockerMachine.runDockerOnNode clusterName n.Name
+                            |> CreateProcess.ensureExitCode
+                            |> Proc.startAndAwait
+        | Ubuntu16_04 ->
             ()
       }

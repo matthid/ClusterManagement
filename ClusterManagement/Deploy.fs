@@ -70,7 +70,7 @@ module Deploy =
       //}
     
     let deployIntegrated cluster file =
-        let t = Env.getResourceText file
+        let t = IO.getResourceText file
         let targetPath = System.IO.Path.Combine(assemblyDir, file)
         System.IO.File.WriteAllText(targetPath, t)
         deploy cluster targetPath [||]

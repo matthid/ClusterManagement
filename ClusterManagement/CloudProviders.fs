@@ -67,7 +67,7 @@ module CloudProviders =
     let getAgentConfig clusterName clusterConfig =
         let tokens = Config.getTokens clusterName clusterConfig
         let getReplacedResourceText name =
-            let resourceText = Env.getResourceText name
+            let resourceText = IO.getResourceText name
             Config.replaceTokens tokens resourceText
         getReplacedResourceText "agent.yml"
 
@@ -87,7 +87,7 @@ aws <command> *)
         let secret = forceConfig "AWS_ACCESS_KEY_SECRET"
         let region = forceConfig "AWS_REGION"
         
-        (sprintf "run --env AWS_ACCESS_KEY_ID=%s --env AWS_SECRET_ACCESS_KEY=%s --env AWS_DEFAULT_REGION=%s garland/aws-cli-docker aws %s"
+        (sprintf "run --rm --env AWS_ACCESS_KEY_ID=%s --env AWS_SECRET_ACCESS_KEY=%s --env AWS_DEFAULT_REGION=%s garland/aws-cli-docker aws %s"
             keyId secret region command)
             |> Arguments.OfWindowsCommandLine
             |> DockerWrapper.createProcess
