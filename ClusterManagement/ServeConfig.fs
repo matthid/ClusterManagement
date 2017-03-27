@@ -38,6 +38,7 @@ module ServeConfig =
                 logger Logging.LogLevel.Error (fun _ -> sprintf "Token '%s' not starting with '%s'" v.Key tokenStart)
 
             { ClusterConfig.Token.Name = key; ClusterConfig.Token.Value = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(v.Value)) })
+        |> Seq.toList
     let private createLogger ctx =
         (fun level createMsg -> ctx.runtime.logger.log level (fun level -> Logging.Message.event level (createMsg(level))) |> Async.RunSynchronously)
     let app =

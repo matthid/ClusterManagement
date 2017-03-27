@@ -16,7 +16,10 @@ module Config =
     let replaceTokensInFile tokens f =
       printfn "Replacing tokens in %s" f
       let fileText = File.ReadAllText f
-      File.WriteAllText(f, replaceTokens tokens fileText)
+      let replaced = replaceTokens tokens fileText
+      if fileText = replaced then
+        eprintfn "No tokens where found in '%s', have %A. Text was: %s" f (tokens |> Seq.toList) fileText 
+      File.WriteAllText(f, replaced)
     
     let set clusterName key value =
         //Storage.openClusterWithStoredSecret clusterName
