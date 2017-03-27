@@ -60,29 +60,30 @@ module DockerWrapper =
         |> createProcess
         |> CreateProcess.redirectOutput
 
-    // otherwise compiler needs inspect-example for projects referencing this assembly :(
-    type internal InspectJson = FSharp.Data.JsonProvider< "inspect-example.json" >
+    module ContainerInspect =
+        // otherwise compiler needs inspect-example for projects referencing this assembly :(
+        type internal InspectJson = FSharp.Data.JsonProvider< "inspect-example.json" >
     
-    let internal getFirstInspectJson json =
-        let json = InspectJson.Load(new System.IO.StringReader(json))
-        json.[0]
+        let internal getFirstInspectJson json =
+            let json = InspectJson.Load(new System.IO.StringReader(json))
+            json.[0]
     
-    type InspectConfigLabels = { ComDockerSwarmServiceName : string option }
-    type InspectConfig = { Labels : InspectConfigLabels }
-    type InspectMount = { Name :string option; Source: string; Destination: string; Driver : string option}
-    type Inspect =
-        { Id : string; Name : string; Mounts : InspectMount list; Config : InspectConfig }
+        type InspectConfigLabels = { ComDockerSwarmServiceName : string option }
+        type InspectConfig = { Labels : InspectConfigLabels }
+        type InspectMount = { Name :string option; Source: string; Destination: string; Driver : string option}
+        type Inspect =
+            { Id : string; Name : string; Mounts : InspectMount list; Config : InspectConfig }
 
-    //Config.Labels.ComDockerSwarmServiceName
-    let parseInspect json =
-        let tp = getFirstInspectJson json
-        let parseMount (m:InspectJson.Mount) =
-            { Name = m.Name; Source = m.Source; Destination = m.Destination; Driver = m.Driver }
-        let parseLabels (m:InspectJson.Labels) =
-            { ComDockerSwarmServiceName = m.ComDockerSwarmServiceName }
-        let parseConfig (m:InspectJson.Config2) =
-            { Labels = parseLabels m.Labels }
-        {Id = tp.Id; Name= tp.Name; Mounts = tp.Mounts |> Seq.map parseMount |> Seq.toList; Config = parseConfig tp.Config }
+        //Config.Labels.ComDockerSwarmServiceName
+        let parseInspect json =
+            let tp = getFirstInspectJson json
+            let parseMount (m:InspectJson.Mount) =
+                { Name = m.Name; Source = m.Source; Destination = m.Destination; Driver = m.Driver }
+            let parseLabels (m:InspectJson.Labels) =
+                { ComDockerSwarmServiceName = m.ComDockerSwarmServiceName }
+            let parseConfig (m:InspectJson.Config2) =
+                { Labels = parseLabels m.Labels }
+            {Id = tp.Id; Name= tp.Name; Mounts = tp.Mounts |> Seq.map parseMount |> Seq.toList; Config = parseConfig tp.Config }
 
     let ensureWorking() =
       async { 
@@ -117,7 +118,7 @@ module DockerWrapper =
                     |> CreateProcess.map (fun o -> o.Output)
                     |> Proc.startAndAwait
 
-                let first = getFirstInspectJson stdOut
+                let first = ContainerInspect.getFirstInspectJson stdOut
                 let binds =
                     first.HostConfig.Binds
                     |> Seq.map (fun m -> 
@@ -224,27 +225,7 @@ module DockerWrapper =
         |> Seq.map splitLine
         |> Seq.toList
 
-        
-    type internal ServiceInspectJson = FSharp.Data.JsonProvider< "service-inspect-example.json" >
-    type VirtualIp = { NetworkId : string; Addr : string; NetmaskBits : int }
-    type ServiceInspectEndpoint = { VirtualIps : VirtualIp list }
-    type ServiceInspect =
-        { Id : string
-          Endpoint : ServiceInspectEndpoint }
-    let getServiceInspectJson json =
-        let json = ServiceInspectJson.Load(new System.IO.StringReader(json))
-        let inspectRaw = json.[0]
-        { Id = inspectRaw.Id
-          Endpoint = 
-            { VirtualIps = 
-                inspectRaw.Endpoint.VirtualIPs 
-                |> Seq.map (fun ip -> 
-                    let addrSplit = ip.Addr.Split([|'/'|])
-                    { NetworkId = ip.NetworkId; Addr = addrSplit.[0]; NetmaskBits = System.Int32.Parse(addrSplit.[1]) }) 
-                |> Seq.toList
-            }
-        }
-    
+
     type DockerPsQuietRow = { ContainerId : string }
     let internal parseDockerPsQuiet (stdOut:string) =
         stdOut.Split ([|'\r';'\n'|], System.StringSplitOptions.RemoveEmptyEntries)
@@ -261,7 +242,7 @@ module DockerWrapper =
         createProcess ([|"inspect"; containerId|] |> Arguments.OfArgs)
         |> CreateProcess.redirectOutput
         |> CreateProcess.ensureExitCode
-        |> CreateProcess.map (fun o -> parseInspect o.Output)
+        |> CreateProcess.map (fun o -> ContainerInspect.parseInspect o.Output)
         
     let kill containerId =
         createProcess ([|"kill"; containerId|] |> Arguments.OfArgs)
@@ -276,7 +257,56 @@ module DockerWrapper =
         |> CreateProcess.redirectOutput
         |> CreateProcess.ensureExitCode
         |> CreateProcess.map (fun o -> parseServices o.Output)
+    
+    module ServiceInspect =
+        type internal ServiceInspectJson = FSharp.Data.JsonProvider< "service-inspect-example.json" >
+        type VirtualIp = { NetworkId : string; Addr : string; NetmaskBits : int }
+        type Endpoint = { VirtualIps : VirtualIp list }
+        type Inspect =
+            { Id : string
+              Endpoint : Endpoint }
+        let getServiceInspectJson json =
+            let json = ServiceInspectJson.Load(new System.IO.StringReader(json))
+            let inspectRaw = json.[0]
+            { Id = inspectRaw.Id
+              Endpoint = 
+                { VirtualIps = 
+                    inspectRaw.Endpoint.VirtualIPs 
+                    |> Seq.map (fun ip -> 
+                        let addrSplit = ip.Addr.Split([|'/'|])
+                        { NetworkId = ip.NetworkId; Addr = addrSplit.[0]; NetmaskBits = System.Int32.Parse(addrSplit.[1]) }) 
+                    |> Seq.toList
+                }
+            }
+    
+    let inspectService serviceName =
+        createProcess ([|"service"; "inspect"; serviceName|] |> Arguments.OfArgs)
+        |> CreateProcess.redirectOutput
+        |> CreateProcess.ensureExitCode
+        |> CreateProcess.map (fun o -> ServiceInspect.getServiceInspectJson o.Output)
         
+    module NetworkInspect =
+        type internal NetworkInspectJson = FSharp.Data.JsonProvider< "network-inspect-example.json" >
+        type Inspect =
+            { Name : string
+              Id : string
+              Scope : string
+              Driver : string }
+        let getNetworkInspectJson json =
+            let json = NetworkInspectJson.Load(new System.IO.StringReader(json))
+            let inspectRaw = json.[0]
+            { Id = inspectRaw.Id
+              Name = inspectRaw.Name
+              Scope = inspectRaw.Scope
+              Driver = inspectRaw.Driver
+            }
+
+    let inspectNetwork networkName =
+        createProcess ([|"network"; "inspect"; networkName|] |> Arguments.OfArgs)
+        |> CreateProcess.redirectOutput
+        |> CreateProcess.ensureExitCode
+        |> CreateProcess.map (fun o -> NetworkInspect.getNetworkInspectJson o.Output)
+
     let removeService service =
         createProcess ([|"service"; "rm"; service|] |> Arguments.OfArgs)
         //|> CreateProcess.ensureExitCode

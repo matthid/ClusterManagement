@@ -1,0 +1,98 @@
+﻿[
+  {
+    "Name": "swarm-net",
+    "Id": "2zcqib9vlz6fa0gotr525dgcm",
+    "Created": "2017-03-26T19:27:41.034556267Z",
+    "Scope": "swarm",
+    "Driver": "overlay",
+    "EnableIPv6": false,
+    "IPAM": {
+      "Driver": "default",
+      "Options": null,
+      "Config": [
+        {
+          "Subnet": "10.0.0.0/24",
+          "Gateway": "10.0.0.1"
+        }
+      ]
+    },
+    "Internal": false,
+    "Attachable": true,
+    "Containers": {
+      "3d3abbb418efce4bbeb8a3b3e48a2846c114fdb0ffab570a704369314269573a": {
+        "Name": "consul.2.zf8bkyz2txf4qcbr8lfam1f5e",
+        "EndpointID": "db98dc97dd41b118f82ad794de463d8926a0e664e11fb69303c4b421a277c869",
+        "MacAddress": "02:42:0a:00:00:0a",
+        "IPv4Address": "10.0.0.10/24",
+        "IPv6Address": ""
+      },
+      "475387ffd4e229036bc7472660cb262a2b8df75324d68c1dbc22b482d87e497d": {
+        "Name": "consul-master-02.1.t3rgrj8xdckybkjnmmd2xnayd",
+        "EndpointID": "5c80e4baf96ede6ed4671b0fd47b58ce9a09b6236b45cd741226f93e84a93dea",
+        "MacAddress": "02:42:0a:00:00:05",
+        "IPv4Address": "10.0.0.5/24",
+        "IPv6Address": ""
+      },
+      "70c957327e8d4030fb4b6228c0c3ba40445b6e2429f6c85416ad820a1d3e3740": {
+        "Name": "jolly_brahmagupta",
+        "EndpointID": "6839ce0982607f49681cdd444ce5ba4b729de38bfc05b27e1fd121234f9db13d",
+        "MacAddress": "02:42:0a:00:00:0d",
+        "IPv4Address": "10.0.0.13/24",
+        "IPv6Address": ""
+      },
+      "8555ca0f64aec960aaa1f40dd20e926f6c89dd20344c131dc20b0e6a25637d7d": {
+        "Name": "consul-master-03.1.t93lknc6akgmjegzf8mgllqw1",
+        "EndpointID": "aad7b0a07c0f5cd101d78273c3901bfa4418212f9f9be6597b046c9faec9593a",
+        "MacAddress": "02:42:0a:00:00:07",
+        "IPv4Address": "10.0.0.7/24",
+        "IPv6Address": ""
+      },
+      "8a707a1f15df714b34246cbf81a8b927869f9621d51c096e2ffdec5a68d46b02": {
+        "Name": "dns.1.ytcnrdyj2fk52zevzm841v08e",
+        "EndpointID": "ac5563ba0bbba4d15dc28c0b84413769c424c0f978bdc930159e85a134ef7645",
+        "MacAddress": "02:42:0a:00:00:11",
+        "IPv4Address": "10.0.0.17/24",
+        "IPv6Address": ""
+      },
+      "8f56d9e7779b1964223bc3e973df835aedf1e35240952b412afd1b9ea988b43b": {
+        "Name": "consul.1.xw9hqxqaod3zcj3vv7vm70qpr",
+        "EndpointID": "80a52e3127dc27df05019e5287a2823e94ab676c5eda600a1d732fa06901ee5d",
+        "MacAddress": "02:42:0a:00:00:09",
+        "IPv4Address": "10.0.0.9/24",
+        "IPv6Address": ""
+      },
+      "a1b26a5122604032f07e5f6bfdd8f0033d0f14819a0a260a2200488cffa01a54": {
+        "Name": "clustermanagement.1.a2wczzf4di9u57zpqdswsnt21",
+        "EndpointID": "b75b3c6176180dd7396c350c3de1fc1bbbe781f99015535d8e2c1db04206d60c",
+        "MacAddress": "02:42:0a:00:00:10",
+        "IPv4Address": "10.0.0.16/24",
+        "IPv6Address": ""
+      },
+      "e2b8c61fcf60a356113bb4afbd31b93e1904efadded4d5662ebabddfb81ee621": {
+        "Name": "consul-master-01.1.cxpv367xb1z86s2mx80vdiw65",
+        "EndpointID": "ccd8fef27da142d97ceab84473ca802034c982a8032ec5198e417ebccd6d10a5",
+        "MacAddress": "02:42:0a:00:00:03",
+        "IPv4Address": "10.0.0.3/24",
+        "IPv6Address": ""
+      },
+      "fdc97f6668efab4266be6ddacdbacf53da424d1128855739e3e94f361b04dc25": {
+        "Name": "ldap.1.zlv4mfvpf8uaqi4r3f44bec9v",
+        "EndpointID": "f5a1627de812bdc31957811c69d3d779d708c0aa36947fc02fd9ee58ea602eb9",
+        "MacAddress": "02:42:0a:00:00:0e",
+        "IPv4Address": "10.0.0.14/24",
+        "IPv6Address": ""
+      }
+    },
+    "Options": {
+      "com.docker.network.driver.overlay.vxlanid_list": "4097",
+      "encrypted": ""
+    },
+    "Labels": {},
+    "Peers": [
+      {
+        "Name": "yaaf-prod-master-01-c15d713fe223",
+        "IP": "172.31.8.237"
+      }
+    ]
+  }
+]

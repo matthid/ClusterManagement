@@ -2,6 +2,10 @@
 
 open System.IO
 
+type CopyDirection =
+    | Upload
+    | Download
+
 module DockerMachine =
 
     let getMachineName clusterName nodeName =
@@ -142,4 +146,47 @@ module DockerMachine =
     let remove force cluster machineName =
         createProcess cluster ([| yield "rm"; if force then yield "-f"; yield "-y"; yield machineName |] |> Arguments.OfArgs)
             
-        
+    let copyContents fileName direction cluster node localDir remoteDir  =
+      async {
+        match direction with
+        | Download ->
+            System.IO.Directory.CreateDirectory(localDir) |> ignore
+        | Upload ->
+            if System.IO.Directory.Exists(localDir) |> not then
+                failwithf "To upload a directory it needs to exist (%s)!" localDir
+            do! CreateProcess.fromRawCommand "mkdir" [|remoteDir|]
+                |> Sudo.wrapCommand
+                |> sshExt cluster node
+                |> Proc.startAndAwait
+
+        // We use tar to copy, because scp doesn't work because of permissions
+        // see http://askubuntu.com/a/531904/400826
+        let streamRef = StreamRef.Empty
+        let compressProc =
+            match direction with
+            | Download ->
+                CreateProcess.fromRawCommand "tar" [|"-c";"-C";remoteDir; fileName|]
+                |> Sudo.wrapCommand
+                |> sshExt cluster node
+            | Upload ->
+                CreateProcess.fromRawCommand "tar" [|"-c";"-C";localDir; fileName|]
+            |> CreateProcess.withStandardOutput (StreamSpecification.CreatePipe streamRef)
+            |> CreateProcess.ensureExitCode
+            |> Proc.start
+        let extractProc =
+            match direction with
+            | Download ->
+                CreateProcess.fromRawCommand "tar" [|"-x";"--no-same-owner";"-C";localDir|]
+            | Upload ->
+                CreateProcess.fromRawCommand "tar" [|"-x";"--no-same-owner";"-C";remoteDir|]
+                |> Sudo.wrapCommand
+                |> sshExt cluster node
+            |> CreateProcess.withStandardInput (StreamSpecification.UseStream(false, streamRef.Value))
+            |> CreateProcess.ensureExitCode
+            |> Proc.start
+
+        do! compressProc |> Async.AwaitTask
+        do! extractProc |> Async.AwaitTask
+      }
+
+    let copyDir direction cluster node localDir remoteDir = copyContents "." direction cluster node localDir remoteDir

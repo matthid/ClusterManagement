@@ -134,7 +134,7 @@ module Volume =
             res |> Proc.ensureExitCodeGetResult |> ignore
       }
 
-    let download cluster volName targetDir =
+    let copyContents (direction:CopyDirection) cluster volName targetDir =
       async {
         let node = "master-01"
         do!
@@ -164,27 +164,7 @@ module Volume =
             match parsed.Mounts |> List.filter (fun m -> m.Driver = Some "flocker" && m.Name = Some volName) with
             | [ mount ] ->
                 let flockerDir = mount.Source
-                System.IO.Directory.CreateDirectory(targetDir) |> ignore
-      
-                // We use tar to copy, because scp doesn't work because of permissions
-                // see http://askubuntu.com/a/531904/400826
-                let streamRef = StreamRef.Empty
-                let compressProc =
-                    //DockerMachine.ssh cluster node (sprintf "sudo tar -c -C %s ." flockerDir)
-                    CreateProcess.fromRawCommand "tar" [|"-c";"-C";flockerDir; "."|]
-                    |> Sudo.wrapCommand
-                    |> DockerMachine.sshExt cluster node
-                    |> CreateProcess.withStandardOutput (StreamSpecification.CreatePipe streamRef)
-                    |> CreateProcess.ensureExitCode
-                    |> Proc.start
-                let extractProc =
-                    CreateProcess.fromRawCommand "tar" [|"-x";"--no-same-owner";"-C";targetDir|]
-                    |> CreateProcess.withStandardInput (StreamSpecification.UseStream(false, streamRef.Value))
-                    |> CreateProcess.ensureExitCode
-                    |> Proc.start
-
-                do! compressProc |> Async.AwaitTask
-                do! extractProc |> Async.AwaitTask
+                do! DockerMachine.copyDir direction cluster node targetDir flockerDir
             | _ -> failwithf "expected our dummy container to have exactly one mount, but has %A" parsed.Mounts
 
         finally
@@ -193,68 +173,9 @@ module Volume =
             |> Proc.startAndAwait
             |> Async.RunSynchronously
       }
-
       
-    let upload cluster volName targetDir =
-      async {
-        let node = "master-01"
-        do!
-            DockerWrapper.remove true "backup-volume-helper"
-            |> DockerMachine.runSudoDockerOnNode cluster node
-            |> Proc.startAndAwait
-
-        // This ensures the flocker volume is mounted on the master node
-        let! containerId =
-            DockerWrapper.createProcess
-                (sprintf "run -d --rm --volume-driver flocker -v %s:/backup --name backup-volume-helper --net swarm-net -e NOSTART=true --entrypoint /sbin/my_init phusion/baseimage"
-                    volName
-                 |> Arguments.OfWindowsCommandLine)
-            |> CreateProcess.redirectOutput
-            |> CreateProcess.ensureExitCode
-            |> CreateProcess.map (fun r -> r.Output.Trim())
-            |> DockerMachine.runSudoDockerOnNode cluster node
-            |> Proc.startAndAwait
-        
-        try
-            // find the mountpoint of the docker volume
-            let! parsed =
-                DockerWrapper.inspect containerId
-                |> DockerMachine.runSudoDockerOnNode cluster node
-                |> Proc.startAndAwait
-
-            match parsed.Mounts |> List.filter (fun m -> m.Driver = Some "flocker" && m.Name = Some volName) with
-            | [ mount ] ->
-                let flockerDir = mount.Source
-                if System.IO.Directory.Exists(targetDir) |> not then
-                    failwithf "To upload a directory it needs to exist (%s)!" targetDir
-      
-                // We use tar to copy, because scp doesn't work because of permissions
-                // see http://askubuntu.com/a/531904/400826
-                let streamRef = StreamRef.Empty
-                let compressProc =
-                    CreateProcess.fromRawCommand "tar" [|"-c";"-C";targetDir; "."|]
-                    //DockerMachine.ssh cluster node (sprintf "sudo tar -c -C %s ." flockerDir)
-                    |> CreateProcess.withStandardOutput (StreamSpecification.CreatePipe streamRef)
-                    |> CreateProcess.ensureExitCode
-                    |> Proc.start
-                let extractProc =
-                    CreateProcess.fromRawCommand "tar" [|"-x";"--no-same-owner";"-C";flockerDir|]
-                    |> Sudo.wrapCommand
-                    |> DockerMachine.sshExt cluster node
-                    |> CreateProcess.withStandardInput (StreamSpecification.UseStream(false, streamRef.Value))
-                    |> CreateProcess.ensureExitCode
-                    |> Proc.start
-
-                do! compressProc |> Async.AwaitTask
-                do! extractProc |> Async.AwaitTask
-            | _ -> failwithf "expected our dummy container to have exactly one mount, but has %A" parsed.Mounts
-
-        finally
-            DockerWrapper.remove true containerId
-            |> DockerMachine.runSudoDockerOnNode cluster node
-            |> Proc.startAndAwait
-            |> Async.RunSynchronously
-      }
+    let download cluster volName targetDir = copyContents CopyDirection.Download cluster volName targetDir 
+    let upload cluster volName targetDir = copyContents CopyDirection.Upload cluster volName targetDir 
 
     let clone fromCluster toCluster =
         ()
