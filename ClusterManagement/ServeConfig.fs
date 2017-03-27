@@ -29,6 +29,17 @@ module ServeConfig =
             tmpFile
 
     type ConsulGetJson = FSharp.Data.JsonProvider<"consul-get-sample.json">
+    let private tokenStart = "yaaf/config/tokens/"
+    let private tokenFromProvider logger (p:ConsulGetJson.Root[]) =
+        p
+        |> Seq.map (fun v ->
+            let key = if (v.Key.StartsWith(tokenStart)) then v.Key.Substring(tokenStart.Length) else v.Key
+            if key = v.Key then
+                logger Logging.LogLevel.Error (fun _ -> sprintf "Token '%s' not starting with '%s'" v.Key tokenStart)
+
+            { ClusterConfig.Token.Name = key; ClusterConfig.Token.Value = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(v.Value)) })
+    let private createLogger ctx =
+        (fun level createMsg -> ctx.runtime.logger.log level (fun level -> Logging.Message.event level (createMsg(level))) |> Async.RunSynchronously)
     let app =
         WebPart.choose [
             Filters.POST 
@@ -41,9 +52,7 @@ module ServeConfig =
                         let! loadAsync = 
                             ConsulGetJson.AsyncLoad ("http://consul:8500/v1/kv/yaaf/config/tokens?recurse=true")
                         let tokens =
-                            loadAsync
-                            |> Seq.map (fun v ->
-                                { ClusterConfig.Token.Name = v.Key; ClusterConfig.Token.Value = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(v.Value)) })
+                            loadAsync |> tokenFromProvider (createLogger ctx)
                         Config.replaceTokensInFile tokens file.tempFilePath
                         return! Files.sendFile file.tempFilePath false ctx
                     })
@@ -110,8 +119,7 @@ module ServeConfig =
                         
                         let tokens =
                             loadAsync
-                            |> Seq.map (fun v ->
-                                { ClusterConfig.Token.Name = v.Key; ClusterConfig.Token.Value = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(v.Value)) })
+                            |> tokenFromProvider (createLogger ctx)
                             |> Seq.tryHead
                         match tokens with
                         | Some clusterName ->
