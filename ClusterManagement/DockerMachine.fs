@@ -59,7 +59,7 @@ module DockerMachine =
         ssh cluster nodeName cmdLine
         |> CreateProcess.withResultFunc createProcess.GetResult
         |> CreateProcess.addSetup createProcess.Setup
-    
+
     let runSudoDockerOnNode cluster nodeName proc =
         proc
         |> CreateProcess.mapFilePath (fun _ -> "docker")
@@ -86,7 +86,7 @@ module DockerMachine =
         createProcess cluster ([|"inspect"; machineName |] |> Arguments.OfArgs)
         |> CreateProcess.redirectOutput
         |> CreateProcess.map (fun r -> parseInspectJson (r.Output.Trim()))
-      
+
     let internal parseIfConfig (ifConfigOut:string) =
         ifConfigOut.Split ([|'\r';'\n'|], System.StringSplitOptions.RemoveEmptyEntries)
         |> Seq.tryFind (fun line -> line.Contains "inet addr")
@@ -98,7 +98,7 @@ module DockerMachine =
             with e ->
                 if Env.isVerbose then eprintfn "Error: %O" e
                 None)
-        |> Option.bind (fun h -> 
+        |> Option.bind (fun h ->
             try
                 h.Split([|':'|])
                 |> Seq.skip 1
@@ -107,14 +107,14 @@ module DockerMachine =
                 if Env.isVerbose then eprintfn "Error: %O" e
                 None)
 
-          
+
     let getIp networkInterface cluster nodeName =
         let runIfConfig arguments =
             CreateProcess.fromRawCommand "ifconfig" arguments
         let getIpFromInterface networkInterface =
             runIfConfig [|networkInterface|]
             |> CreateProcess.redirectOutput
-            |> CreateProcess.map (fun o -> 
+            |> CreateProcess.map (fun o ->
                 match parseIfConfig o.Output with
                 | Some ip -> ip
                 | None -> failwithf "Could not detect ip of interace via 'ifconfig %s | grep \"inet addr\"'" networkInterface)
@@ -130,7 +130,7 @@ module DockerMachine =
     let runDockerPs cluster nodeName =
         DockerWrapper.ps ()
         |> runSudoDockerOnNode cluster nodeName
-        
+
     let internal runDockerInspect cluster nodeName containerId =
         DockerWrapper.inspect containerId
         |> runSudoDockerOnNode cluster nodeName
@@ -145,7 +145,7 @@ module DockerMachine =
 
     let remove force cluster machineName =
         createProcess cluster ([| yield "rm"; if force then yield "-f"; yield "-y"; yield machineName |] |> Arguments.OfArgs)
-            
+
     let copyContents fileName direction cluster node localDir remoteDir  =
       async {
         match direction with

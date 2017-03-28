@@ -117,10 +117,25 @@ type VolumeCloneArgs =
             | SourceCluster _ -> "The name of the cluster to copy the volumes from."
             | DestinationCluster _ -> "The name of the cluster to copy the volumes into."
 
+type VolumeCopyContentsArgs =
+    | [<AltCommandLine("-c")>] Cluster of string
+    | [<AltCommandLine("-n")>] Volume of string
+    | [<AltCommandLine("-l")>] LocalFolder of string
+    | [<AltCommandLine("-f")>] FileName of string
+  with
+    interface IArgParserTemplate with
+        member this.Usage = 
+            match this with
+            | Cluster _ -> "The name of the cluster to copy the volumes from or to."
+            | Volume _ -> "The name of the volume to interact with."
+            | LocalFolder _ -> "The name of the local folder to interact with."
+            | FileName _ -> "Set to interact with a single file (relative to the directories) only."
 
 type VolumeArgs =
     | [<CliPrefix(CliPrefix.None)>] List of ParseResults<ListVolumeArgs>
     | [<CliPrefix(CliPrefix.None)>] Create of ParseResults<VolumeCreateArgs>
+    | [<CliPrefix(CliPrefix.None)>] Download of ParseResults<VolumeCopyContentsArgs>
+    | [<CliPrefix(CliPrefix.None)>] Upload of ParseResults<VolumeCopyContentsArgs>
     | [<CliPrefix(CliPrefix.None)>] Clone of ParseResults<VolumeCloneArgs>
     | [<CliPrefix(CliPrefix.None)>] Delete of ParseResults<VolumeDeleteArgs>
   with
@@ -129,6 +144,8 @@ type VolumeArgs =
             match this with
             | List _ -> "List all volumes, optionally only show volumes of a specific cluster."
             | Create _ -> "Create a new volume."
+            | Download _ -> "Download a given volume to a folder."
+            | Upload _ -> "Upload a given folder to a volume."
             | Clone _ -> "Clone volumes from one cluster to another."
             | Delete _ -> "Delete a volume."
 

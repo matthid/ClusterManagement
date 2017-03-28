@@ -13,7 +13,7 @@ let initTool toolName (field:string ref) =
     let! toolPath = Which.getToolPath toolName
     field := toolPath
   }
-    
+
 let checkDocker () =
   async {
     do! initTool "docker" DockerWrapper.dockerPath
@@ -24,7 +24,7 @@ let checkDocker () =
         printfn "Found docker at: '%s'" !DockerWrapper.dockerPath
         printfn "Found docker-machine at: '%s'" !DockerMachineWrapper.dockerMachinePath
         printfn "Found chroot at: '%s'" !DockerMachineWrapper.dockerMachinePath
-    
+
     // Check if docker works
     if Env.isLinux && not (System.IO.File.Exists("/var/run/docker.sock")) then
        failwithf "Docker socket not found! Please use '-v /var/run/docker.sock:/var/run/docker.sock -v $PWD:/workDir -v /:/host' when running this from within a docker container."
@@ -68,9 +68,9 @@ let handleArgs (argv:string array) =
                 |> Proc.startRaw
                 |> fun r -> r.GetAwaiter().GetResult()
             printfn "stty -a: %s" res.Result.Output
-        
+
         if not Env.isLinux then
-            eprintfn "WARN: This program was currently only tested as matthid/clustermanagement dockerized app. Running it standalone (especially on windows) might lead to bugs."        
+            eprintfn "WARN: This program was currently only tested as matthid/clustermanagement dockerized app. Running it standalone (especially on windows) might lead to bugs."
         assert (IO.stdInTTy = (not IO.isConsoleSizeZero))
 
         if results.Contains(<@ MyArgs.Version @>) then
@@ -79,7 +79,7 @@ let handleArgs (argv:string array) =
         else
             match results.TryGetSubCommand() with
             | Some (Cluster clusterRes) ->
-                checkDocker () |> Async.RunSynchronously 
+                checkDocker () |> Async.RunSynchronously
                 match clusterRes.TryGetSubCommand() with
                 | Some (ClusterArgs.Encrypt encryptRes) ->
                     let cluster = clusterRes.GetResult <@ ClusterArgs.Cluster @>
@@ -94,17 +94,17 @@ let handleArgs (argv:string array) =
                 | Some (ClusterArgs.CreateNew createNewRes) ->
                     let cluster = clusterRes.GetResult <@ ClusterArgs.Cluster @>
                     let masterAsWorker = createNewRes.Contains <@ ClusterCreateNewArgs.MasterAsWorker @>
-                    let masterNodes = 
+                    let masterNodes =
                         match createNewRes.TryGetResult <@ ClusterCreateNewArgs.MasterNodes @> with
                         | Some n -> n
                         | None -> 1
-                    let workerNodes = 
+                    let workerNodes =
                         match createNewRes.TryGetResult <@ ClusterCreateNewArgs.WorkerNodes @> with
                         | Some n -> n
                         | None -> 0
-                    let secret = Storage.withDefaultPassword (createNewRes.TryGetResult <@ ClusterCreateNewArgs.Secret @>) 
+                    let secret = Storage.withDefaultPassword (createNewRes.TryGetResult <@ ClusterCreateNewArgs.Secret @>)
                     let force = createNewRes.Contains <@ ClusterCreateNewArgs.Force @>
-                        
+
                     Cluster.createNewCluster force cluster secret masterNodes masterAsWorker workerNodes
                     |> Async.RunSynchronously
 
@@ -134,7 +134,7 @@ let handleArgs (argv:string array) =
                     printfn "%s" (clusterRes.Parser.PrintUsage())
                     1
             | Some (List listRes) ->
-                checkDocker () |> Async.RunSynchronously 
+                checkDocker () |> Async.RunSynchronously
                 match listRes.TryGetSubCommand() with
                 | Some (ListArgs.Cluster _) ->
                     let formatPrint name secretAvailable isInitialized =
@@ -150,15 +150,15 @@ let handleArgs (argv:string array) =
                     printfn "%s" (listRes.Parser.PrintUsage())
                     1
             | Some (Volume res) ->
-                checkDocker () |> Async.RunSynchronously 
+                checkDocker () |> Async.RunSynchronously
                 match res.TryGetSubCommand() with
                 | Some (VolumeArgs.List listRes) ->
                     let clusterName = listRes.TryGetResult <@ ListVolumeArgs.Cluster @>
                     let clusters =
                         match clusterName with
                         | Some name -> [ name ]
-                        | None -> 
-                            ClusterInfo.getClusters() 
+                        | None ->
+                            ClusterInfo.getClusters()
                             |> Seq.filter (fun c -> c.SecretAvailable && c.IsInitialized.IsSome && c.IsInitialized.Value)
                             |> Seq.map (fun c -> c.Name)
                             |> Seq.toList
@@ -183,12 +183,43 @@ let handleArgs (argv:string array) =
                         match createArgs.TryGetResult <@ VolumeCreateArgs.Size @> with
                         | Some s -> s
                         | None -> 1024L * 1024L * 1024L
-                    
+
                     Storage.openClusterWithStoredSecret clusterName
                     Volume.create clusterName name size
                     |> Async.RunSynchronously
                     Storage.closeClusterWithStoredSecret clusterName
 
+                    0
+                | Some (VolumeArgs.Upload uploadArgs) ->
+                    let clusterName = uploadArgs.GetResult <@ VolumeCopyContentsArgs.Cluster @>
+                    let name = uploadArgs.GetResult <@ VolumeCopyContentsArgs.Volume @>
+                    let localFolder = uploadArgs.GetResult <@ VolumeCopyContentsArgs.LocalFolder @>
+                    let fileName =
+                        match uploadArgs.TryGetResult <@ VolumeCopyContentsArgs.FileName @> with
+                        | Some f -> f
+                        | None -> "."
+
+                    Storage.openClusterWithStoredSecret clusterName
+                    Volume.copyContents fileName CopyDirection.Upload clusterName name localFolder
+                    |> Async.RunSynchronously
+
+                    Storage.closeClusterWithStoredSecret clusterName
+
+                    0
+                | Some (VolumeArgs.Download downloadArgs) ->
+                    let clusterName = downloadArgs.GetResult <@ VolumeCopyContentsArgs.Cluster @>
+                    let name = downloadArgs.GetResult <@ VolumeCopyContentsArgs.Volume @>
+                    let localFolder = downloadArgs.GetResult <@ VolumeCopyContentsArgs.LocalFolder @>
+                    let fileName =
+                        match downloadArgs.TryGetResult <@ VolumeCopyContentsArgs.FileName @> with
+                        | Some f -> f
+                        | None -> "."
+
+                    Storage.openClusterWithStoredSecret clusterName
+                    Volume.copyContents fileName CopyDirection.Upload clusterName name localFolder
+                    |> Async.RunSynchronously
+
+                    Storage.closeClusterWithStoredSecret clusterName
                     0
                 | Some (VolumeArgs.Clone _) ->
                     printfn "Not implemented."
@@ -196,7 +227,7 @@ let handleArgs (argv:string array) =
                 | Some (VolumeArgs.Delete deleteArgs) ->
                     let clusterName = deleteArgs.GetResult <@ VolumeDeleteArgs.Cluster @>
                     let name = deleteArgs.GetResult <@ VolumeDeleteArgs.Name @>
-                    
+
                     Storage.openClusterWithStoredSecret clusterName
                     Volume.destroy clusterName name
                     |> Async.RunSynchronously
@@ -208,7 +239,7 @@ let handleArgs (argv:string array) =
                     printfn "%s" (res.Parser.PrintUsage())
                     1
             | Some (DockerMachine res) ->
-                checkDocker () |> Async.RunSynchronously 
+                checkDocker () |> Async.RunSynchronously
                 match res.TryGetResult <@ DockerMachineArgs.Cluster @> with
                 | Some (name) ->
                     Storage.openClusterWithStoredSecret name
@@ -224,19 +255,19 @@ let handleArgs (argv:string array) =
                     printfn "Please specify a cluster to run this command for."
                     printfn "%s" (res.Parser.PrintUsage())
                     1
-                    
+
             | Some (Config configRes) ->
                 checkDocker () |> Async.RunSynchronously
                 match configRes.TryGetSubCommand() with
                 | Some (ConfigArgs.Upload uploadArgs) ->
                     //uploadArgs
                     let clusterName = uploadArgs.GetResult <@ ConfigUploadArgs.Cluster @>
-                    let filePath = 
+                    let filePath =
                         uploadArgs.GetResult <@ ConfigUploadArgs.FilePath @>
                         |> DockerWrapper.mapGivenPath
-                        
+
                     let name = uploadArgs.GetResult <@ ConfigUploadArgs.Name @>
-                    
+
                     let data = File.ReadAllBytes(filePath)
                     Storage.openClusterWithStoredSecret clusterName
                     ConfigStorage.writeFile clusterName name data
@@ -248,7 +279,7 @@ let handleArgs (argv:string array) =
                         downloadArgs.GetResult <@ ConfigDownloadArgs.FilePath @>
                         |> DockerWrapper.mapGivenPath
                     let name = downloadArgs.GetResult <@ ConfigDownloadArgs.Name @>
-                
+
                     Storage.openClusterWithStoredSecret clusterName
                     let res = ConfigStorage.tryReadFile clusterName name
                     Storage.closeClusterWithStoredSecret clusterName
@@ -261,13 +292,13 @@ let handleArgs (argv:string array) =
                 | Some (ConfigArgs.Get getArgs) ->
                     let name = getArgs.GetResult <@ ConfigGetArgs.Key @>
                     let clusterName = getArgs.GetResult <@ ConfigGetArgs.Cluster @>
-                
+
                     Storage.openClusterWithStoredSecret clusterName
                     let c = ClusterConfig.readClusterConfig clusterName
                     let res = ClusterConfig.getConfig name c
                     Storage.closeClusterWithStoredSecret clusterName
                     match res with
-                    | Some va -> 
+                    | Some va ->
                         printfn "%s" va
                         0
                     | None ->
@@ -276,7 +307,7 @@ let handleArgs (argv:string array) =
                     let name = setArgs.GetResult <@ ConfigSetArgs.Key @>
                     let value = setArgs.GetResult <@ ConfigSetArgs.Value @>
                     let clusterName = setArgs.GetResult <@ ConfigSetArgs.Cluster @>
-                
+
                     Storage.openClusterWithStoredSecret clusterName
                     Config.set clusterName name value
                     Storage.closeClusterWithStoredSecret clusterName
@@ -284,12 +315,12 @@ let handleArgs (argv:string array) =
                 | Some (ConfigArgs.Copy copyArgs) ->
                     let source = copyArgs.GetResult <@ ConfigCopyArgs.Source @>
                     let dest = copyArgs.GetResult <@ ConfigCopyArgs.Dest @>
-                    
+
                     Storage.openClusterWithStoredSecret source
                     Storage.openClusterWithStoredSecret dest
 
                     Config.cloneConfig source dest
-                    
+
                     Storage.closeClusterWithStoredSecret source
                     Storage.closeClusterWithStoredSecret dest
 
@@ -301,8 +332,8 @@ let handleArgs (argv:string array) =
                     let clusters =
                         match clusterName with
                         | Some name -> [ name ]
-                        | None -> 
-                            ClusterInfo.getClusters() 
+                        | None ->
+                            ClusterInfo.getClusters()
                             |> Seq.filter (fun c -> c.SecretAvailable)
                             |> Seq.map (fun c -> c.Name)
                             |> Seq.toList
@@ -320,12 +351,12 @@ let handleArgs (argv:string array) =
                         let toks = ClusterConfig.getTokens cc
                         for tok in toks do
                             formatPrintT tok.Name tok.Value c
-                            
 
-                        if includeFiles then              
+
+                        if includeFiles then
                             for f in ConfigStorage.getFiles c do
                                 formatPrintT f "<file>" c
-                                    
+
 
                         Storage.closeClusterWithStoredSecret c
                     0
@@ -334,7 +365,7 @@ let handleArgs (argv:string array) =
                     printfn "%s" (configRes.Parser.PrintUsage())
                     1
             | Some (Provision res) ->
-                checkDocker () |> Async.RunSynchronously 
+                checkDocker () |> Async.RunSynchronously
                 let nodeName = res.GetResult <@ ProvisionArgs.NodeName @>
                 let clusterName = res.GetResult <@ ProvisionArgs.Cluster @>
                 let nodeType = res.GetResult <@ ProvisionArgs.NodeType @>
@@ -342,25 +373,25 @@ let handleArgs (argv:string array) =
                 |> Async.RunSynchronously
                 0
             | Some (Run res) ->
-                checkDocker () |> Async.RunSynchronously 
+                checkDocker () |> Async.RunSynchronously
                 let script = res.GetResult <@ RunArgs.Script @>
                 let clusterName = res.GetResult <@ RunArgs.Cluster @>
                 Deploy.deploy clusterName script restArgs
                 0
             | Some (Service res) ->
-                checkDocker () |> Async.RunSynchronously 
+                checkDocker () |> Async.RunSynchronously
                 raise <| NotImplementedException "not implemented"
                 //let script = res.GetResult <@ RunArgs.Script @>
                 //let clusterName = res.GetResult <@ RunArgs.Cluster @>
                 //Deploy.deploy clusterName script restArgs
                 0
             | Some (Export res) ->
-                checkDocker () |> Async.RunSynchronously 
+                checkDocker () |> Async.RunSynchronously
                 // TODO: make sure to export flocker-container as well
                 raise <| NotImplementedException "not implemented"
                 0
             | Some (Import res) ->
-                checkDocker () |> Async.RunSynchronously 
+                checkDocker () |> Async.RunSynchronously
                 // TODO: make sure to import flocker-container as well
                 raise <| NotImplementedException "not implemented"
                 0
@@ -370,12 +401,12 @@ let handleArgs (argv:string array) =
                     ServeConfig.startServer ()
                     0
                 | Some (OpenCluster res) ->
-                    checkDocker () |> Async.RunSynchronously 
+                    checkDocker () |> Async.RunSynchronously
                     let clusterName = res.GetResult <@ OpenClusterArgs.Cluster @>
                     Storage.openClusterWithStoredSecret clusterName
                     0
                 | Some (CloseCluster res) ->
-                    checkDocker () |> Async.RunSynchronously 
+                    checkDocker () |> Async.RunSynchronously
                     let clusterName = res.GetResult <@ CloseClusterArgs.Cluster @>
                     Storage.closeClusterWithStoredSecret clusterName
                     0
@@ -405,8 +436,8 @@ let handleArgs (argv:string array) =
                                     Name = fileNameWithoutExtension,
                                     FileName = fileName)
                             requestContent.Add(fileContent)
-                            let result = 
-                                client.PutAsync(uri, requestContent) 
+                            let result =
+                                client.PutAsync(uri, requestContent)
                                 |> Async.AwaitTask
                                 |> Async.RunSynchronously
                             let res = result.Content.ReadAsStringAsync().Result
@@ -428,7 +459,7 @@ let handleArgs (argv:string array) =
                 printfn "%s" (parser.PrintUsage())
                 1
     | Choice2Of2 e ->
-        printfn "%s" e.Message  
+        printfn "%s" e.Message
         1
 
 [<EntryPoint>]
@@ -440,5 +471,5 @@ let main argv =
         if Env.isVerbose then
             eprintfn "%O" e
         else
-            eprintfn "%s" e.Message   
+            eprintfn "%s" e.Message
         2

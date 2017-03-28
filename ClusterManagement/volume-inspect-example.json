@@ -1,0 +1,18 @@
+﻿[
+  {
+    "Driver": "flocker",
+    "Labels": null,
+    "Mountpoint": "/flocker/69ca428d-c874-4a26-a9e5-24bacd023223",
+    "Name": "backup_yaaf-prod-seafile",
+    "Options": {},
+    "Scope": "local"
+  },
+  {
+    "Driver": "local",
+    "Labels": null,
+    "Mountpoint": "/var/lib/docker/volumes/f91d7c54cc328d1affe6f41fb9c66366dfcfa3049fbfea1e6e3ac07a932f6216/_data",
+    "Name": "f91d7c54cc328d1affe6f41fb9c66366dfcfa3049fbfea1e6e3ac07a932f6216",
+    "Options": {},
+    "Scope": "local"
+  }
+]

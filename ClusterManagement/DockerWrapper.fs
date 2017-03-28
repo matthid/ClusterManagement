@@ -39,16 +39,16 @@ module DockerWrapper =
         override x.ToString() =
             match x with
             | Dir d -> d
-            | NamedVolume n -> n 
+            | NamedVolume n -> n
     type Mount = { HostSource : HostSource; ContainerDir : string }
 
     let dockerPath = ref "docker"
     let baseMounts = ref []
-    
+
     let createProcess args =
-        let env = 
-            System.Environment.GetEnvironmentVariables() 
-            |> Seq.cast<System.Collections.DictionaryEntry> 
+        let env =
+            System.Environment.GetEnvironmentVariables()
+            |> Seq.cast<System.Collections.DictionaryEntry>
             |> Seq.map (fun kv -> string kv.Key, string kv.Value)
             |> Seq.toList
 
@@ -63,11 +63,11 @@ module DockerWrapper =
     module ContainerInspect =
         // otherwise compiler needs inspect-example for projects referencing this assembly :(
         type internal InspectJson = FSharp.Data.JsonProvider< "inspect-example.json" >
-    
+
         let internal getFirstInspectJson json =
             let json = InspectJson.Load(new System.IO.StringReader(json))
             json.[0]
-    
+
         type InspectConfigLabels = { ComDockerSwarmServiceName : string option }
         type InspectConfig = { Labels : InspectConfigLabels }
         type InspectMount = { Name :string option; Source: string; Destination: string; Driver : string option}
@@ -86,7 +86,7 @@ module DockerWrapper =
             {Id = tp.Id; Name= tp.Name; Mounts = tp.Mounts |> Seq.map parseMount |> Seq.toList; Config = parseConfig tp.Config }
 
     let ensureWorking() =
-      async { 
+      async {
         do! CreateProcess.fromRawWindowsCommandLine !dockerPath "version"
             |> CreateProcess.redirectOutput
             |> CreateProcess.ensureExitCode
@@ -97,15 +97,15 @@ module DockerWrapper =
         if System.IO.File.Exists("/proc/self/cgroup") then
             let searchStr = ":/docker/"
             let cgroupString = System.IO.File.ReadAllLines("/proc/self/cgroup")
-            let dockerId = 
+            let dockerId =
                 cgroupString
-                |> Seq.choose (fun l -> 
+                |> Seq.choose (fun l ->
                     let i = l.IndexOf(searchStr)
                     if i >= 0 then
                         Some <| l.Substring(i + searchStr.Length)
                     else None)
                 |> Seq.filter (fun s -> s.Length > 0)
-                |> Seq.tryHead 
+                |> Seq.tryHead
             match dockerId with
             | Some id ->
                 Env.isContainerized <- true
@@ -121,8 +121,8 @@ module DockerWrapper =
                 let first = ContainerInspect.getFirstInspectJson stdOut
                 let binds =
                     first.HostConfig.Binds
-                    |> Seq.map (fun m -> 
-                        let s = m.Split [|':'|] 
+                    |> Seq.map (fun m ->
+                        let s = m.Split [|':'|]
                         let host, container = s.[0], s.[1]
                         let source =
                             if host.StartsWith "/" then HostSource.Dir host else HostSource.NamedVolume host
@@ -177,7 +177,7 @@ module DockerWrapper =
         |> createProcess
         |> CreateProcess.redirectOutput
         |> CreateProcess.map (fun output -> output.Output)
-      
+
     let flockerctl args =
         sprintf "run --net=host --rm -e FLOCKER_CERTS_PATH=\"/etc/flocker\" -e FLOCKER_USER=\"flockerctl\" -e FLOCKER_CONTROL_SERVICE=\"${CLUSTER_NAME}-01\" -e CONTAINERIZED=1 -v /:/host -v $PWD:/pwd:z clusterhq/uft:latest flockerctl %s" args
         |> Arguments.OfWindowsCommandLine
@@ -193,7 +193,7 @@ module DockerWrapper =
     //
     //    ()
     //  }
-      
+
     type DockerServiceReplicas = { Current : int; Requested : int}
     type DockerService =
         { Id : string; Name : string; Mode : string; Replicas : DockerServiceReplicas; Image : string }
@@ -201,20 +201,20 @@ module DockerWrapper =
         let splitLine (line:string) =
             let (s:string array) = line.Split ([|' '; '\t'|], System.StringSplitOptions.RemoveEmptyEntries)
             assert (s.Length = 5)
-            if s.Length <> 5 then 
-                if s.Length > 5 
-                    then eprintfn "Could not parse output line from 'docker service ls': %s" line 
-                    else failwithf "Could not parse output line from 'docker service ls': %s" line 
+            if s.Length <> 5 then
+                if s.Length > 5
+                    then eprintfn "Could not parse output line from 'docker service ls': %s" line
+                    else failwithf "Could not parse output line from 'docker service ls': %s" line
             let (rep:string array) = s.[3].Split([|'/'|])
-            if rep.Length <> 2 then 
+            if rep.Length <> 2 then
                 if rep.Length > 2
                     then eprintfn "Could not parse output (rep) line from 'docker service ls': %s" line
                     else failwithf "Could not parse output (rep) line from 'docker service ls': %s" line
-            let currentRep = 
+            let currentRep =
                 match System.Int32.TryParse(rep.[0]) with
                 | true, i -> i
                 | _ -> failwithf "Could not parse output line (currentRep) from 'docker service ls': %s" line
-            let maxRep = 
+            let maxRep =
                 match System.Int32.TryParse(rep.[1]) with
                 | true, i -> i
                 | _ -> failwithf "Could not parse output line (maxRep) from 'docker service ls': %s" line
@@ -243,7 +243,7 @@ module DockerWrapper =
         |> CreateProcess.redirectOutput
         |> CreateProcess.ensureExitCode
         |> CreateProcess.map (fun o -> ContainerInspect.parseInspect o.Output)
-        
+
     let kill containerId =
         createProcess ([|"kill"; containerId|] |> Arguments.OfArgs)
         |> CreateProcess.ensureExitCode
@@ -257,7 +257,7 @@ module DockerWrapper =
         |> CreateProcess.redirectOutput
         |> CreateProcess.ensureExitCode
         |> CreateProcess.map (fun o -> parseServices o.Output)
-    
+
     module ServiceInspect =
         type internal ServiceInspectJson = FSharp.Data.JsonProvider< "service-inspect-example.json" >
         type VirtualIp = { NetworkId : string; Addr : string; NetmaskBits : int }
@@ -269,22 +269,22 @@ module DockerWrapper =
             let json = ServiceInspectJson.Load(new System.IO.StringReader(json))
             let inspectRaw = json.[0]
             { Id = inspectRaw.Id
-              Endpoint = 
-                { VirtualIps = 
-                    inspectRaw.Endpoint.VirtualIPs 
-                    |> Seq.map (fun ip -> 
+              Endpoint =
+                { VirtualIps =
+                    inspectRaw.Endpoint.VirtualIPs
+                    |> Seq.map (fun ip ->
                         let addrSplit = ip.Addr.Split([|'/'|])
-                        { NetworkId = ip.NetworkId; Addr = addrSplit.[0]; NetmaskBits = System.Int32.Parse(addrSplit.[1]) }) 
+                        { NetworkId = ip.NetworkId; Addr = addrSplit.[0]; NetmaskBits = System.Int32.Parse(addrSplit.[1]) })
                     |> Seq.toList
                 }
             }
-    
+
     let inspectService serviceName =
         createProcess ([|"service"; "inspect"; serviceName|] |> Arguments.OfArgs)
         |> CreateProcess.redirectOutput
         |> CreateProcess.ensureExitCode
         |> CreateProcess.map (fun o -> ServiceInspect.getServiceInspectJson o.Output)
-        
+
     module NetworkInspect =
         type internal NetworkInspectJson = FSharp.Data.JsonProvider< "network-inspect-example.json" >
         type Inspect =
@@ -307,6 +307,28 @@ module DockerWrapper =
         |> CreateProcess.ensureExitCode
         |> CreateProcess.map (fun o -> NetworkInspect.getNetworkInspectJson o.Output)
 
+    module VolumeInspect =
+        type internal VolumeInspectJson = FSharp.Data.JsonProvider< "volume-inspect-example.json" >
+        type Inspect =
+            { Mountpoint : string
+              Name : string
+              Scope : string
+              Driver : string }
+        let getVolumeInspectJson json =
+            let json = VolumeInspectJson.Load(new System.IO.StringReader(json))
+            let inspectRaw = json.[0]
+            { Mountpoint = inspectRaw.Mountpoint
+              Name = inspectRaw.Name
+              Scope = inspectRaw.Scope
+              Driver = inspectRaw.Driver
+            }
+
+    let inspectVolume volumeName =
+        createProcess ([|"volume"; "inspect"; volumeName|] |> Arguments.OfArgs)
+        |> CreateProcess.redirectOutput
+        |> CreateProcess.ensureExitCode
+        |> CreateProcess.map (fun o -> VolumeInspect.getVolumeInspectJson o.Output)
+
     let removeService service =
         createProcess ([|"service"; "rm"; service|] |> Arguments.OfArgs)
         //|> CreateProcess.ensureExitCode
@@ -323,10 +345,10 @@ module DockerMachineWrapper =
 
     let createProcess confDir args =
         let t = dockerMachineStoragePath
-        
-        let env = 
-            System.Environment.GetEnvironmentVariables() 
-            |> Seq.cast<System.Collections.DictionaryEntry> 
+
+        let env =
+            System.Environment.GetEnvironmentVariables()
+            |> Seq.cast<System.Collections.DictionaryEntry>
             |> Seq.map (fun kv -> string kv.Key, string kv.Value)
             |> fun s -> Seq.append s ["MACHINE_STORAGE_PATH", t]
             |> Seq.toList
@@ -340,12 +362,12 @@ module DockerMachineWrapper =
             System.IO.Directory.CreateDirectory(t) |> ignore
             IO.cp { IO.CopyOptions.Default with IntegrateExisting = true; IsRecursive = true }
                 confDir t
-            
+
             IO.chmod IO.CmodOptions.Rec (LanguagePrimitives.EnumOfValue 0o0600u) t
 
             { new IProcessHook with
                 member x.Dispose () =
-                    System.IO.Directory.Delete (t, true) 
+                    System.IO.Directory.Delete (t, true)
                 member x.ProcessExited e =
                     System.IO.Directory.Delete(confDir, true)
                     IO.cp { IO.CopyOptions.Default with IntegrateExisting = true; IsRecursive = true }

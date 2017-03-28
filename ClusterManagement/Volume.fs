@@ -37,7 +37,7 @@ module Volume =
              t
         | _ ->
             failwithf "failed to parse list-nodes: %s" out
-            
+
     let listNodes cluster =
       async {
         let! res = flockerctl cluster "master-01" "list-nodes"
@@ -48,15 +48,15 @@ module Volume =
     type FlockerVolume =
         { Dataset : string; Size : string; Metadata : string; Status : string; ServerId : string; ServerIP : string }
     let internal parseList (out:string) =
-        //DATASET                                SIZE     METADATA                     STATUS         SERVER               
-        //4bd4f27f-65dd-435b-aaa9-2bdf28f6f3d8   75.00G   name=blub-master-01-consul   attached ✅   31f83f34 (127.0.0.1) 
+        //DATASET                                SIZE     METADATA                     STATUS         SERVER
+        //4bd4f27f-65dd-435b-aaa9-2bdf28f6f3d8   75.00G   name=blub-master-01-consul   attached ✅   31f83f34 (127.0.0.1)
         let splitLine (prevLine:string,prevSplits:string array,last:FlockerVolume) (line:string) =
             let (s:string array) = line.Split ([|' '; '\t'|], System.StringSplitOptions.RemoveEmptyEntries)
             if s.Length < 6 then
                 // fixup/addition of last line
                 assert (not (isNull prevLine))
                 // append each split to the data with the correct index
-                
+
                 prevLine, prevSplits,
                     s
                     |> Seq.fold (fun data fixup ->
@@ -95,26 +95,26 @@ module Volume =
             |> Seq.map (fun (_,g) -> g |> Seq.last) // take the last fixup
             |> Seq.toList
         items
-        
+
     let list cluster =
       async {
         let! res = flockerctl cluster "master-01" "list"
         res |> Proc.ensureExitCodeGetResult |> ignore
         return parseList res.Result.Output
-      } 
-      
+      }
+
     let destroy cluster datasetId =
       async {
         let! res = flockerctl cluster "master-01" (sprintf "destroy -d %s" datasetId)
         res |> Proc.ensureExitCodeGetResult |> ignore
-      } 
-    
+      }
+
     let create cluster name (size:int64) =
       async {
         // flockerctl check if exists
         // docker run flockerctl volume create
         let! vols = list cluster
-        
+
         match vols |> Seq.tryFind (fun v -> v.Metadata.Contains (sprintf "name=%s" name)) with
         | Some v ->
             eprintfn "Not creating volume '%s' as it already exists (id: %s)." name v.Dataset
@@ -125,7 +125,7 @@ module Volume =
             match maybeNodeId with
             | Some n -> nodeId := n.ServerId
             | None ->
-                let! r = listNodes cluster 
+                let! r = listNodes cluster
                 match r |> Seq.tryHead |> Option.map (fun h -> h.Server) with
                 | Some s -> nodeId := s
                 | None ->
@@ -134,7 +134,7 @@ module Volume =
             res |> Proc.ensureExitCodeGetResult |> ignore
       }
 
-    let copyContents (direction:CopyDirection) cluster volName targetDir =
+    let copyContents fileName (direction:CopyDirection) cluster volName targetDir =
       async {
         let node = "master-01"
         do!
@@ -143,6 +143,10 @@ module Volume =
             |> Proc.startAndAwait
 
         // This ensures the flocker volume is mounted on the master node
+        // We don't even check if the volume is already mounted because this has two advantages:
+        // - This way docker ensures for us to not umount the volume to somewhere else
+        // docker run -d --rm --volume-driver flocker -v backup_yaaf-prod-seafile:/backup -v yaaf-prod-seafile:/data --name my_backup-volume-helper --net swarm-net -e NOSTART=true --entrypoint /sbin/my_init phusion/baseimage
+        // docker exec -ti my_backup-volume-helper /bin/bash
         let! containerId =
             DockerWrapper.createProcess
                 (sprintf "run -d --rm --volume-driver flocker -v %s:/backup --name backup-volume-helper --net swarm-net -e NOSTART=true --entrypoint /sbin/my_init phusion/baseimage"
@@ -153,18 +157,18 @@ module Volume =
             |> CreateProcess.map (fun r -> r.Output.Trim())
             |> DockerMachine.runSudoDockerOnNode cluster node
             |> Proc.startAndAwait
-        
+
         try
             let! parsed =
                 DockerWrapper.inspect containerId
                 |> DockerMachine.runSudoDockerOnNode cluster node
                 |> Proc.startAndAwait
-                
+
             // find the mountpoint of the docker volume
             match parsed.Mounts |> List.filter (fun m -> m.Driver = Some "flocker" && m.Name = Some volName) with
             | [ mount ] ->
                 let flockerDir = mount.Source
-                do! DockerMachine.copyDir direction cluster node targetDir flockerDir
+                do! DockerMachine.copyContents fileName direction cluster node targetDir flockerDir
             | _ -> failwithf "expected our dummy container to have exactly one mount, but has %A" parsed.Mounts
 
         finally
@@ -173,9 +177,9 @@ module Volume =
             |> Proc.startAndAwait
             |> Async.RunSynchronously
       }
-      
-    let download cluster volName targetDir = copyContents CopyDirection.Download cluster volName targetDir 
-    let upload cluster volName targetDir = copyContents CopyDirection.Upload cluster volName targetDir 
+
+    let download cluster volName targetDir = copyContents "." CopyDirection.Download cluster volName targetDir
+    let upload cluster volName targetDir = copyContents "." CopyDirection.Upload cluster volName targetDir
 
     let clone fromCluster toCluster =
         ()
