@@ -17,6 +17,10 @@ let runDocker cmd = runDockerE "master-01" cmd
 
 let volName = sprintf "%s-clustermanagement" d.ClusterName
 
+// Stop existing service
+runDocker "service rm clustermanagement"
+    |> ignore
+
 // CM docker-machine -c <cluster> -- ssh blub-master-01 ifconfig -> get docker0 ip
 Volume.create d.ClusterName volName (1024L * 1024L * 1024L) // 1 GB
 |> Async.RunSynchronously
@@ -26,7 +30,13 @@ let tmpPath = System.IO.Path.GetTempFileName()
 System.IO.File.Delete tmpPath
 System.IO.Directory.CreateDirectory tmpPath
 try
-    System.IO.File.Copy (StoragePath.getClusterConfigFile d.ClusterName, System.IO.Path.Combine(tmpPath, StoragePath.clusterConfig))
+    let tmpConfig = System.IO.Path.Combine(tmpPath, StoragePath.clusterConfig)
+    System.IO.File.Copy (StoragePath.getClusterConfigFile d.ClusterName, tmpConfig)
+    // Add CLUSTER_NAME
+    ClusterConfig.readConfigFromFile tmpConfig
+        |> ClusterConfig.setConfig "CLUSTER_NAME" d.ClusterName
+        |> ClusterConfig.writeClusterConfigToFile tmpConfig
+
     IO.cp { IO.CopyOptions.Default with DoOverwrite = true } (StoragePath.getConfigFilesDir d.ClusterName) (System.IO.Path.Combine(tmpPath, StoragePath.configFilesDirName))
     Volume.copyContents "." CopyDirection.Upload d.ClusterName volName tmpPath
         |> Async.RunSynchronously

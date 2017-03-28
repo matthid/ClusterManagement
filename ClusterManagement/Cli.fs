@@ -6,10 +6,10 @@ type ClusterInitArgs =
     | [<AltCommandLine("-f")>] Force
   with
     interface IArgParserTemplate with
-        member this.Usage = 
+        member this.Usage =
             match this with
             | Force -> "Initializes a new cluster, even if it is already initialized."
-            
+
 type ClusterCreateNewArgs =
     | [<AltCommandLine("-f")>] Force
     | [<AltCommandLine("-p")>] Secret of string
@@ -18,7 +18,7 @@ type ClusterCreateNewArgs =
     | [<AltCommandLine("-w")>] WorkerNodes of int
   with
     interface IArgParserTemplate with
-        member this.Usage = 
+        member this.Usage =
             match this with
             | Force _ -> "Do the action, even when the cluster already exists. USE THIS FLAG CAREFULLY as it will make some ressources INACCESSIBLE!"
             | Secret _ -> "The secret to save the cluster configuration and storage with."
@@ -30,7 +30,7 @@ type ClusterDecryptEncryptArgs =
     | [<AltCommandLine("-p")>] Secret of string
   with
     interface IArgParserTemplate with
-        member this.Usage = 
+        member this.Usage =
             match this with
             | Secret _ -> "The secret to encrypt or decrypt the cluster with. If the cluster is already encrypted, the secret will be changed to the given one."
 
@@ -38,14 +38,14 @@ type ClusterDestroyArgs =
     | [<AltCommandLine("-f")>] Force
   with
     interface IArgParserTemplate with
-        member this.Usage = 
+        member this.Usage =
             match this with
             | Force _ -> "Force the deletion of the docker-machines, even when we encounter errors while cleaning up."
 type ClusterDeleteArgs =
     | [<AltCommandLine("-f")>] Force
   with
     interface IArgParserTemplate with
-        member this.Usage = 
+        member this.Usage =
             match this with
             | Force _ -> "Force delete the cluster locally, even when it already has been initialized."
 
@@ -53,7 +53,7 @@ type ClusterListArgs =
     | Dummy of string
   with
     interface IArgParserTemplate with
-        member this.Usage = 
+        member this.Usage =
             match this with
             | Dummy _ -> "Dummy command line."
 
@@ -67,7 +67,7 @@ type ClusterArgs =
     | [<CliPrefix(CliPrefix.None)>] Delete of ParseResults<ClusterDeleteArgs>
   with
     interface IArgParserTemplate with
-        member this.Usage = 
+        member this.Usage =
             match this with
             | Cluster _ -> "The name of the cluster for the current operation."
             | CreateNew _ -> "Create a new cluster (only the config, without initializing)."
@@ -81,7 +81,7 @@ type ListVolumeArgs =
     | [<AltCommandLine("-c")>] Cluster of string
   with
     interface IArgParserTemplate with
-        member this.Usage = 
+        member this.Usage =
             match this with
             | Cluster _ -> "The name of the cluster for filtering volumes. If none is given we show the volumes for all clusters we have access to."
 
@@ -91,7 +91,7 @@ type VolumeCreateArgs =
     | [<Mandatory>] [<AltCommandLine("-n")>] Name of string
   with
     interface IArgParserTemplate with
-        member this.Usage = 
+        member this.Usage =
             match this with
             | Cluster _ -> "The name of the cluster to create the volume for."
             | Size _ -> "The size of the new Volume in bytes. Defaults to 1G (1024 * 1024 * 1024)"
@@ -102,17 +102,17 @@ type VolumeDeleteArgs =
     | [<Mandatory>] [<AltCommandLine("-n")>] Name of string
   with
     interface IArgParserTemplate with
-        member this.Usage = 
+        member this.Usage =
             match this with
             | Cluster _ -> "The name of the cluster to delete the volume for."
             | Name _ -> "The dataset-id of the Volume to delete."
-            
+
 type VolumeCloneArgs =
     | SourceCluster of string
     | DestinationCluster of string
   with
     interface IArgParserTemplate with
-        member this.Usage = 
+        member this.Usage =
             match this with
             | SourceCluster _ -> "The name of the cluster to copy the volumes from."
             | DestinationCluster _ -> "The name of the cluster to copy the volumes into."
@@ -124,7 +124,7 @@ type VolumeCopyContentsArgs =
     | [<AltCommandLine("-f")>] FileName of string
   with
     interface IArgParserTemplate with
-        member this.Usage = 
+        member this.Usage =
             match this with
             | Cluster _ -> "The name of the cluster to copy the volumes from or to."
             | Volume _ -> "The name of the volume to interact with."
@@ -140,7 +140,7 @@ type VolumeArgs =
     | [<CliPrefix(CliPrefix.None)>] Delete of ParseResults<VolumeDeleteArgs>
   with
     interface IArgParserTemplate with
-        member this.Usage = 
+        member this.Usage =
             match this with
             | List _ -> "List all volumes, optionally only show volumes of a specific cluster."
             | Create _ -> "Create a new volume."
@@ -155,19 +155,19 @@ type ConfigSetArgs =
     | Value of string
   with
     interface IArgParserTemplate with
-        member this.Usage = 
+        member this.Usage =
             match this with
             | Cluster _ -> "Change configuration of an existing cluster."
             | Key _ -> "The key of the config to create."
             | Value _ -> "The value of the config to create."
- 
+
 type ConfigUploadArgs =
     | [<AltCommandLine("-c")>] [<Mandatory>] Cluster of string
     | Name of string
     | [<AltCommandLine("-f")>] FilePath of string
   with
     interface IArgParserTemplate with
-        member this.Usage = 
+        member this.Usage =
             match this with
             | Cluster _ -> "Upload a configuration file for an existing cluster."
             | Name _ -> "The name of the config to create (can contain / for folders)."
@@ -179,18 +179,18 @@ type ConfigDownloadArgs =
     | [<AltCommandLine("-f")>] FilePath of string
   with
     interface IArgParserTemplate with
-        member this.Usage = 
+        member this.Usage =
             match this with
             | Cluster _ -> "Download a configuration file of an existing cluster."
             | Name _ -> "The name of the config to retrieve (can contain / for folders)."
             | FilePath _ -> "The file to write."
-                        
+
 type ConfigGetArgs =
     | [<AltCommandLine("-c")>] [<Mandatory>] Cluster of string
     | Key of string
   with
     interface IArgParserTemplate with
-        member this.Usage = 
+        member this.Usage =
             match this with
             | Cluster _ -> "Change configuration of an existing cluster."
             | Key _ -> "The key of the config to get."
@@ -201,7 +201,7 @@ type ListConfigArgs =
     | [<AltCommandLine("-f")>] IncludeFiles
   with
     interface IArgParserTemplate with
-        member this.Usage = 
+        member this.Usage =
             match this with
             | Cluster _ -> "The name of the cluster for filtering config values. If none is given we show the configurations for all clusters we have access to."
             | IncludeValues _ -> "Print values as well."
@@ -212,11 +212,19 @@ type ConfigCopyArgs =
     | [<Mandatory>] [<AltCommandLine("-d")>] Dest of string
   with
     interface IArgParserTemplate with
-        member this.Usage = 
+        member this.Usage =
             match this with
             | Source _ -> "The name of the source cluster to copy configurations from."
             | Dest _ -> "The name of the destination cluster to copy the configuration into."
-             
+
+type ConfigUpdateClusterArgs =
+    | [<AltCommandLine("-c")>] Cluster of string
+  with
+    interface IArgParserTemplate with
+        member this.Usage =
+            match this with
+            | Cluster _ -> "The cluster to update."
+
 type ConfigArgs =
     | [<CliPrefix(CliPrefix.None)>] Upload of ParseResults<ConfigUploadArgs>
     | [<CliPrefix(CliPrefix.None)>] Download of ParseResults<ConfigDownloadArgs>
@@ -224,9 +232,10 @@ type ConfigArgs =
     | [<CliPrefix(CliPrefix.None)>] Get of ParseResults<ConfigGetArgs>
     | [<CliPrefix(CliPrefix.None)>] Copy of ParseResults<ConfigCopyArgs>
     | [<CliPrefix(CliPrefix.None)>] List of ParseResults<ListConfigArgs>
+    | [<CliPrefix(CliPrefix.None)>] UpdateCluster of ParseResults<ConfigUpdateClusterArgs>
   with
     interface IArgParserTemplate with
-        member this.Usage = 
+        member this.Usage =
             match this with
             | Upload _ -> "Upload a new configuration file."
             | Download _ -> "Download a new configuration file."
@@ -234,13 +243,14 @@ type ConfigArgs =
             | Get _ -> "Get a configuration value by key."
             | Copy _ -> "Copy configuration from one cluster to another."
             | List _ -> "List all configs, optionally only show configs of a specific cluster."
+            | UpdateCluster _ -> "Updates the cluster instance with the current values."
 
 type DockerMachineArgs =
     | [<AltCommandLine("-c")>] Cluster of string
     | [<AltCommandLine("--")>] Rest of string list
   with
     interface IArgParserTemplate with
-        member this.Usage = 
+        member this.Usage =
             match this with
             | Cluster _ -> "The cluster to run the docker-machine command on."
             | Rest _ -> "The arguments for docker-machine"
@@ -249,7 +259,7 @@ type ListClusterArgs =
     | [<AltCommandLine("--")>] Rest of string list
   with
     interface IArgParserTemplate with
-        member this.Usage = 
+        member this.Usage =
             match this with
             | Rest _ -> "Dummy for future options"
 
@@ -257,7 +267,7 @@ type ListArgs =
     | [<CliPrefix(CliPrefix.None)>] Cluster of ParseResults<ListClusterArgs>
   with
     interface IArgParserTemplate with
-        member this.Usage = 
+        member this.Usage =
             match this with
             | Cluster _ -> "The cluster to run the docker-machine command on."
 
@@ -269,7 +279,7 @@ type ProvisionArgs =
     | [<Mandatory>] NodeType of NodeType
   with
     interface IArgParserTemplate with
-        member this.Usage = 
+        member this.Usage =
             match this with
             | NodeName _ -> "The name of the node to provision."
             | Cluster _ -> "The name of the current cluster."
@@ -281,7 +291,7 @@ type RunArgs =
     | [<AltCommandLine("--")>] Rest of string list
   with
     interface IArgParserTemplate with
-        member this.Usage = 
+        member this.Usage =
             match this with
             | Script  _ -> "The script to execute."
             | Cluster _ -> "The name of the current cluster."
@@ -294,7 +304,7 @@ type ServiceArgs =
     | [<AltCommandLine("-c")>] [<Mandatory>] Cluster of string
   with
     interface IArgParserTemplate with
-        member this.Usage = 
+        member this.Usage =
             match this with
             | Add  _ -> "Add a service to the cluster."
             | Backup _ -> "backup an existing service."
@@ -309,7 +319,7 @@ type ExportArgs =
     | [<AltCommandLine("-p")>] Secret
   with
     interface IArgParserTemplate with
-        member this.Usage = 
+        member this.Usage =
             match this with
             | Cluster _ -> "The name of the current cluster."
             | IncludeVolumeContents  _ -> "Should the export contain the volume data?"
@@ -322,7 +332,7 @@ type ImportArgs =
     | Secret of string
   with
     interface IArgParserTemplate with
-        member this.Usage = 
+        member this.Usage =
             match this with
             | ImportFile _ -> "The export file to import."
             | Secret  _ -> "The secret of the cluster."
@@ -331,7 +341,7 @@ type ServeConfigArgs =
     | ConsulAddress of string
   with
     interface IArgParserTemplate with
-        member this.Usage = 
+        member this.Usage =
             match this with
             | ConsulAddress _ -> "The consul server to connect to."
 
@@ -339,7 +349,7 @@ type DeployConfigArgs =
     | [<AltCommandLine("-c")>] Dummy of string
   with
     interface IArgParserTemplate with
-        member this.Usage = 
+        member this.Usage =
             match this with
             | Dummy _ -> "The name of the cluster for filtering config values. If none is given we show the configurations for all clusters we have access to."
 
@@ -347,7 +357,7 @@ type OpenClusterArgs =
     | [<AltCommandLine("-c")>] Cluster of string
   with
     interface IArgParserTemplate with
-        member this.Usage = 
+        member this.Usage =
             match this with
             | Cluster _ -> "The name of the cluster we want to open."
 
@@ -355,7 +365,7 @@ type CloseClusterArgs =
     | [<AltCommandLine("-c")>] Cluster of string
   with
     interface IArgParserTemplate with
-        member this.Usage = 
+        member this.Usage =
             match this with
             | Cluster _ -> "The name of the cluster we want to close."
 
@@ -366,7 +376,7 @@ type InternalArgs =
     | [<CliPrefix(CliPrefix.None)>] CloseCluster of ParseResults<CloseClusterArgs>
   with
     interface IArgParserTemplate with
-        member this.Usage = 
+        member this.Usage =
             match this with
             | ServeConfig _ -> "INTERNAL: Start a simple webserver which deploys a list of config-file tokens, which can be easily consumed by a bash script."
             | DeployConfig _ -> "INTERNAL: Deploy the configuration files to the cluster"
@@ -389,7 +399,7 @@ type MyArgs =
     | [<CliPrefix(CliPrefix.None)>] Internal of ParseResults<InternalArgs>
   with
     interface IArgParserTemplate with
-        member this.Usage = 
+        member this.Usage =
             match this with
             | Version -> "Prints the version of the program."
             | Verbose -> "Makes the current operation more verbose."

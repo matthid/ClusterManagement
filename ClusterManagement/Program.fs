@@ -360,6 +360,12 @@ let handleArgs (argv:string array) =
 
                         Storage.closeClusterWithStoredSecret c
                     0
+                | Some (ConfigArgs.UpdateCluster updateArgs) ->
+                    let clusterName = updateArgs.GetResult <@ ConfigUpdateClusterArgs.Cluster @>
+
+                    // We simply re-deploy clustermanagement
+                    Deploy.deployIntegrated clusterName "DeployClusterManagement.fsx"
+                    0
                 | _ ->
                     printfn "Please specify a subcommand."
                     printfn "%s" (configRes.Parser.PrintUsage())
