@@ -6,22 +6,22 @@ module IO =
     let isConsoleSizeZero =
         try (0 = (System.Console.WindowHeight + System.Console.WindowWidth))
         with _ -> true
-    
+
     //let isOutputRedirected = isConsoleSizeZero && not System.Console.KeyAvailable
     //let isInputRedirected = isConsoleSizeZero && System.Console.KeyAvailable
     // see http://stackoverflow.com/a/36258285/1269722
-    let stdInTTy = 
+    let stdInTTy =
         try Mono.Unix.Native.Syscall.isatty (0)
         // Windows doesn't support syscall
         with :? System.DllNotFoundException -> not isConsoleSizeZero
     //let stdOutTTy = Mono.Unix.Native.Syscall.isatty (1)
     //let stdErrTTy = Mono.Unix.Native.Syscall.isatty (2)
 
-    //type CopyOptions = 
+    //type CopyOptions =
     //    | Rec
-    //    | Overwrite 
-    //    | IntegrateExisting 
-    //    | UseExisitingFiles 
+    //    | Overwrite
+    //    | IntegrateExisting
+    //    | UseExisitingFiles
     //    | IgnoreErrors of (System.IO.IOException -> unit)
     type CopyOptions =
         { IsRecursive : bool
@@ -38,7 +38,7 @@ module IO =
 
     open System.IO
     /// Copes the source directory to the destination with the given CopyOptions
-    let rec cp (options:CopyOptions) source dest = 
+    let rec cp (options:CopyOptions) source dest =
         let doOverwrite = options.DoOverwrite // options |> List.exists (fun o -> match o with CopyOptions.Overwrite -> true | _ -> false)
         let useExisting = options.UseExisting //|> List.exists (fun o -> match o with CopyOptions.UseExisitingFiles -> true | _ -> false)
         let isRec = options.IsRecursive //|> List.exists (fun o -> match o with CopyOptions.Rec -> true | _ -> false)
@@ -47,7 +47,7 @@ module IO =
             failwith "either overwrite, ignore or none but not both!"
         // assume we have cp /item1 /item2
         let doIgnore = options.IgnoreErrors //|> List.choose (fun o -> match o with CopyOptions.IgnoreErrors f -> Some f | _ -> None) |> Seq.tryHead
-        let ignoreFun e = 
+        let ignoreFun e =
             match doIgnore with
             | Some f -> f e
             | _ -> printfn "Ignoring: %O" e
@@ -68,11 +68,11 @@ module IO =
         |_ when Directory.Exists source ->
             try
                 let toCopy = Directory.EnumerateFileSystemEntries(source)
-                let doCopy dest items = 
+                let doCopy dest items =
                     if isRec then
                         items
-                        |> Seq.map 
-                            (fun item -> 
+                        |> Seq.map
+                            (fun item ->
                                 let name = Path.GetFileName item
                                 let dest = Path.Combine(dest, name)
                                 item, dest)
@@ -91,7 +91,7 @@ module IO =
                             newDest
                     toCopy
                     |> doCopy dest
-                else 
+                else
                     // Just copy to this dir
                     Directory.CreateDirectory(dest)|>ignore
                     toCopy
@@ -102,27 +102,27 @@ module IO =
     type ChownOptions =
         | None = 0
         | Rec = 1
-    let rec doRec traverse f item = 
+    let rec doRec traverse f item =
         match true with
         |_ when File.Exists item ->
             f true item
         |_ when Directory.Exists item ->
             f false item
             if traverse then
-                Directory.EnumerateFileSystemEntries(item) 
+                Directory.EnumerateFileSystemEntries(item)
                     |> Seq.iter (fun item -> doRec true f item)
         | _ -> failwithf "item %s not found" item
-    let chown (options:ChownOptions) (user:Mono.Unix.UnixUserInfo) (group:Mono.Unix.UnixGroupInfo) dest = 
+    let chown (options:ChownOptions) (user:Mono.Unix.UnixUserInfo) (group:Mono.Unix.UnixGroupInfo) dest =
         let chownSimple _ item =
             let entry = Mono.Unix.UnixFileSystemInfo.GetFileSystemEntry item
             entry.SetOwner(user, group)
-    
+
         doRec (options.HasFlag ChownOptions.Rec) chownSimple dest
 
 
     type CmodOptions =
         | None = 0
-        | Rec = 1 
+        | Rec = 1
 
     /// http://www.tutorialspoint.com/unix_system_calls/chmod.htm
     let chmod (options:CmodOptions) rights dest =
@@ -134,7 +134,7 @@ module IO =
             doRec (options.HasFlag CmodOptions.Rec) chmodSimple dest
         else
             eprintfn "Ignoring chmod on windows"
-    
+
     let getResourceText name =
         if Env.isVerbose then
             printfn "extracting resource '%s'" name

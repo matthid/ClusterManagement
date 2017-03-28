@@ -18,18 +18,18 @@ type DeployInfo =
 module Deploy =
     let private assembly = System.Reflection.Assembly.GetExecutingAssembly()
     let private assemblyDir = System.IO.Path.GetDirectoryName assembly.Location
-        
-    let private session = 
-        lazy 
+
+    let private session =
+        lazy
             let s = ScriptHost.CreateNew(defines = ["CLUSTERMANGEMENT"])
             s.Reference(assembly.Location)
             s
 
     let mutable private info = Unchecked.defaultof<_>
 
-    let getInfo () = 
+    let getInfo () =
         let i = info
-        if System.Object.ReferenceEquals(i, null) then 
+        if System.Object.ReferenceEquals(i, null) then
             failwith "this script must be run with 'ClusterManagement.exe deploy --script script.fsx'"
         i
 
@@ -63,12 +63,12 @@ module Deploy =
         info <- getInfoInternal cluster args
 
         session.Load (targetPath)
-    
+
         info <- Unchecked.defaultof<_>
 
         Storage.closeClusterWithStoredSecret cluster
       //}
-    
+
     let deployIntegrated cluster file =
         let t = IO.getResourceText file
         let targetPath = System.IO.Path.Combine(assemblyDir, file)

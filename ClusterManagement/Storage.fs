@@ -27,6 +27,7 @@ module StoragePath =
     let extension = ".cluster"
     let configStorage = "cm-config.yml"
     let clusterConfig = "cluster-config.yml"
+    let configFilesDirName = "config-files"
     let storagePath =
         let env = Environment.GetEnvironmentVariable "CM_STORAGE"
         if String.IsNullOrEmpty env then Path.Combine("clustercfg", ".cm") else env
@@ -40,27 +41,27 @@ module StoragePath =
         p
 
     let getTempStoragePath () = tempStoragePath |> ensureAndReturnDir
-    
+
     let getClusterDirectory name =
         Path.Combine (tempStoragePath, name)
         |> ensureAndReturnDir
 
-        
+
     let getDockerMachineDir name =
         Path.Combine(getClusterDirectory name, "docker-machine")
         |> ensureAndReturnDir
 
     let getClusterConfigFile name =
         Path.Combine(getClusterDirectory name, clusterConfig)
-        
+
     let getGlobalConfigDir name =
         Path.Combine(getClusterDirectory name, "global")
         |> ensureAndReturnDir
-        
+
     let getConfigFilesDir name =
-        Path.Combine(getClusterDirectory name, "config-files")
+        Path.Combine(getClusterDirectory name, configFilesDirName)
         |> ensureAndReturnDir
-        
+
     let getNodesDir name =
         Path.Combine(getClusterDirectory name, "nodes")
         |> ensureAndReturnDir
@@ -72,7 +73,7 @@ module StoragePath =
     let getWorkerNodeDir name num =
         Path.Combine(getNodesDir name, sprintf "worker-%02i" num)
         |> ensureAndReturnDir
-        
+
     let getClusterFile name =
         Path.Combine (storagePath |> ensureAndReturnDir, sprintf "%s%s" name extension)
 
@@ -80,7 +81,7 @@ module StoragePath =
 
 module GlobalConfig =
     open StoragePath
-        
+
     // Make config 'immutable' for higher abstractions
     type private ClusterManagementConfig = YamlConfig<"cm-config.yml">
     type MyManagementConfig =
@@ -92,7 +93,7 @@ module GlobalConfig =
 
         if File.Exists c then
             cc.Load c
-        
+
         { ClusterManagementConfig = cc }
 
     let writeConfig { ClusterManagementConfig = cc } =
@@ -114,7 +115,7 @@ module GlobalConfig =
 
         ccp.LoadText(text)
         ccp
-        
+
     let setSecret name newSecret { ClusterManagementConfig = cc } =
         let ccp = cloneConfig cc
         let newItem =
@@ -122,9 +123,9 @@ module GlobalConfig =
             i.clustername <- name
             i.secret <- newSecret
             i
-            
+
         let filtered =
-            ccp.secrets 
+            ccp.secrets
             |> Seq.filter (fun c -> c.clustername <> name)
             |> Seq.toList
         ccp.secrets.Clear()
@@ -136,23 +137,26 @@ module GlobalConfig =
 
 module ClusterConfig =
     open StoragePath
-            
+
     type private ClusterConfig = YamlConfig<"cluster-config.yml">
     type MyClusterConfig =
         private { ClusterConfig : ClusterConfig }
-        
-    let private readClusterConfigI allowInitial name =
-        let c = getClusterConfigFile name
 
+    let private readConfigFromFileP allowInitial c =
         let cc = ClusterConfig()
         //cc.config.Clear()
         if File.Exists c then
             cc.Load c
         elif not allowInitial then
             failwith "Cluster needs to be opened/created first"
-        
+
         { ClusterConfig = cc }
-           
+    let readConfigFromFile c = readConfigFromFileP false c
+
+    let private readClusterConfigI allowInitial name =
+        let c = getClusterConfigFile name
+        readConfigFromFileP allowInitial c
+
     let readClusterConfig name =
         readClusterConfigI false name
 
@@ -161,24 +165,26 @@ module ClusterConfig =
         let { ClusterConfig = cc } = readClusterConfigI true name
         cc.globalConfig.masterAsWorker <- masterAsWorker
         cc.Save(c)
-        
 
     let getMasterAsWorker { ClusterConfig = cc } =
         cc.globalConfig.masterAsWorker
-        
+
     let setClusterInitialized name isInit =
         let c = getClusterConfigFile name
         let { ClusterConfig = cc } = readClusterConfig name
         cc.globalConfig.isInitialized <- isInit
         cc.Save(c)
-        
+
     let getIsInitialized { ClusterConfig = cc } =
         cc.globalConfig.isInitialized
 
-    let writeClusterConfig name { ClusterConfig = cc } =
-        let c = getClusterConfigFile name
+    let writeClusterConfigToFile (c:string) { ClusterConfig = cc } =
         cc.Save(c)
-        
+
+    let writeClusterConfig name cc =
+        let c = getClusterConfigFile name
+        writeClusterConfigToFile c cc
+
     let private cloneClusterConfig (cc:ClusterConfig) =
         let ccp = new ClusterConfig()
         let sb = new System.Text.StringBuilder()
@@ -198,7 +204,7 @@ module ClusterConfig =
             i.value <- value
             i
         let filtered =
-            ccp.config 
+            ccp.config
             |> Seq.filter (fun c -> c.name <> name)
             |> Seq.toList
         ccp.config.Clear()
@@ -239,11 +245,11 @@ module Storage =
         Directory.GetDirectories nodesDir
         |> Seq.choose (fun subDir ->
             let name = Path.GetFileName subDir
-            let t = 
+            let t =
                 if name.StartsWith "master-01" then
                     Some PrimaryMaster
                 elif name.StartsWith "master-" then
-                    Some Master 
+                    Some Master
                 elif name.StartsWith "worker-" then
                     Some Worker
                 else None
@@ -264,7 +270,7 @@ module Storage =
         let dir = getClusterDirectory name
         Zip.zipAndEncrypt (getClusterFile name) password dir
         Directory.Delete(dir, true)
-    
+
     let openClusterWithStoredSecret cluster =
         let secret =
             GlobalConfig.readConfig()
@@ -288,17 +294,16 @@ module Storage =
     let quickSaveClusterWithStoredSecret name =
         closeClusterWithStoredSecret name
         openClusterWithStoredSecret name
-    
+
     let deleteCluster cluster =
         let dir = getClusterDirectory cluster
         let file = getClusterFile cluster
         if Directory.Exists dir then
             Directory.Delete(dir, true)
-        
+
         if File.Exists file then
             File.Delete (file)
-        
-        
+
 module ConfigStorage =
     open StoragePath
 
@@ -307,7 +312,7 @@ module ConfigStorage =
         let fullPath = Path.Combine (basePath, path)
         let dirPath = Path.GetDirectoryName (fullPath) |> ensureAndReturnDir
         File.WriteAllBytes(fullPath, data)
-        
+
     let tryReadFile cluster path =
         let basePath = getConfigFilesDir cluster
         let fullPath = Path.Combine (basePath, path)
@@ -338,7 +343,7 @@ module ClusterInfo =
         Directory.EnumerateFiles(storagePath |> ensureAndReturnDir, "*" + extension)
         |> Seq.map (fun f ->
             { Name = Path.GetFileNameWithoutExtension f; Path = f })
-        
+
     let getOpenedClusters () =
         Directory.EnumerateDirectories(getTempStoragePath())
         |> Seq.map (fun f ->

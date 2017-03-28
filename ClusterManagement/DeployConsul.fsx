@@ -8,7 +8,7 @@ let d = Deploy.getInfo()
 if Env.isVerbose then
     printfn "Deploying Consul to cluster '%s'" d.ClusterName
 
-// TODO: Deploy with this.   
+// TODO: Deploy with this.
 // docker service create --name primary-consul --mount type=volume,src=master-01-consul,dst=/consul/data,volume-driver=flocker --network swarm-net --constraint 'node.role == manager' consul agent -server -advertise=10.0.0.2 -bootstrap-expect=1 -bind=0.0.0.0 -client=0.0.0.0
 // use inspect on created service -> VirtualIP should be 10.0.0.2...
 // docker service create --name consul-master-NN  --mount type=volume,src=master-NN-consul,dst=/consul/data,volume-driver=flocker  --network swarm-net --constraint 'node.role == manager' consul agent -server -advertise=10.0.0.4 -bind=0.0.0.0 -client=0.0.0.0 -retry-join=10.0.0.2
@@ -38,27 +38,27 @@ for service in services |> Seq.filter (fun s -> s.Name.StartsWith("consul")) do
 for master in [ 1 .. masterNum ] do
     let volName = sprintf "%s-consul-master-%02d" d.ClusterName master
     // CM docker-machine -c <cluster> -- ssh blub-master-01 ifconfig -> get docker0 ip
-    Volume.create d.ClusterName volName (1024L * 1024L * 1024L) // 1 GB 
+    Volume.create d.ClusterName volName (1024L * 1024L * 1024L) // 1 GB
     |> Async.RunSynchronously
     if master = 1 then
-        runDocker 
+        runDocker
             (sprintf "service create --name consul-master-%02d --mount type=volume,src=%s,dst=/consul/data,volume-driver=flocker --network swarm-net --constraint node.role==manager -e \"CONSUL_BIND_INTERFACE=eth0\" -e \"CONSUL_LOCAL_CONFIG={\\\"skip_leave_on_interrupt\\\":true}\" consul agent -server -bootstrap-expect=%d -client=0.0.0.0 -retry-interval 5s"
                 master volName masterNum)
             |> Proc.ensureExitCodeGetResult
             |> ignore
         // for the first node we assert if the ip is correct
-        let inspect = runDocker (sprintf "service inspect %s" "consul-master-01") |> Proc.ensureExitCodeGetResult |> (fun r -> r.Output)  |> DockerWrapper.getServiceInspectJson
+        let inspect = runDocker (sprintf "service inspect %s" "consul-master-01") |> Proc.ensureExitCodeGetResult |> (fun r -> r.Output)  |> DockerWrapper.ServiceInspect.getServiceInspectJson
         let ip = inspect.Endpoint.VirtualIps.Head
         if ip.Addr <> "10.0.0.2" then failwithf "expected ip 10.0.0.2, but was %s" ip.Addr
     else
-        runDocker 
+        runDocker
             (sprintf "service create --name consul-master-%02d --mount type=volume,src=%s,dst=/consul/data,volume-driver=flocker --network swarm-net --constraint node.role==manager -e \"CONSUL_BIND_INTERFACE=eth0\" -e \"CONSUL_LOCAL_CONFIG={\\\"skip_leave_on_interrupt\\\":true}\" consul agent -server -retry-join=10.0.0.3 -bootstrap-expect=%d -client=0.0.0.0 -retry-interval 5s"
                 master volName masterNum)
             |> Proc.ensureExitCodeGetResult
             |> ignore
 
 let contraint = if rawWorkerNum > 0 then "--constraint node.role!=manager " else ""
-runDocker 
+runDocker
     (sprintf "service create %s--name consul --replicas %d --network swarm-net -e \"CONSUL_BIND_INTERFACE=eth0\" consul agent -client=0.0.0.0 -retry-join=10.0.0.3 -retry-join=10.0.0.5 -retry-join=10.0.0.7 -retry-interval 5s"
         contraint workerNum)
 

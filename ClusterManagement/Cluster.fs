@@ -17,9 +17,9 @@ module Cluster =
             try
                 Storage.openCluster cluster secret
             with _ ->
-                eprintfn "Could not open cluster with either old or new password" 
+                eprintfn "Could not open cluster with either old or new password"
                 reraise()
-        
+
             // encrypt with new password
             Storage.closeCluster cluster secret
         // Store new secret
@@ -46,7 +46,7 @@ module Cluster =
                     try
                         Storage.openCluster cluster secret
                     with _ ->
-                        eprintfn "Could not open cluster with either old or new password" 
+                        eprintfn "Could not open cluster with either old or new password"
                         reraise()
                 not wasOpened
             else true
@@ -75,12 +75,12 @@ module Cluster =
         if not (File.Exists clusterKey) || not (File.Exists clusterCrt) then
             if File.Exists clusterKey then File.Delete clusterKey
             if File.Exists clusterCrt then File.Delete clusterCrt
-            let! res = 
+            let! res =
                 DockerWrapper.flockerca config (Arguments.OfArgs [| "initialize"; clusterName|]).ToWindowsCommandLine
                 |> Proc.startAndAwait
             if not (File.Exists clusterKey) || not (File.Exists clusterCrt) then
                 failwithf "flockerca failed to create '%s' or '%s'" clusterKeyName clusterCrtName
-        
+
         let copyClusterCertAndKey dir =
             File.Copy (clusterKey, Path.Combine(dir, clusterKeyName), true)
             File.Copy (clusterCrt, Path.Combine(dir, clusterCrtName), true)
@@ -97,7 +97,7 @@ module Cluster =
           }
         let deleteIfExists f =
             if File.Exists f then File.Delete f
-            
+
         let handle source dest =
             if File.Exists dest then
                 File.Delete source
@@ -106,20 +106,20 @@ module Cluster =
             let nodeName = Storage.getNodeNameByDir dir
             initFlocker dir (fun flockerDir ->
               async {
-                let! res = 
+                let! res =
                     DockerWrapper.flockerca flockerDir (sprintf "create-control-certificate %s" nodeName)
                     |> Proc.startAndAwait
                 handle (Path.Combine(flockerDir, sprintf "control-%s.crt" nodeName)) (Path.Combine(flockerDir, "control-service.crt"))
                 handle (Path.Combine(flockerDir, sprintf "control-%s.key" nodeName)) (Path.Combine(flockerDir, "control-service.key"))
-                
+
                 deleteIfExists (Path.Combine(flockerDir, "flockerctl.crt"))
                 deleteIfExists (Path.Combine(flockerDir, "flockerctl.key"))
-                let! res = 
+                let! res =
                     DockerWrapper.flockerca flockerDir "create-api-certificate flockerctl"
                     |> Proc.startAndAwait
-                ()  
+                ()
             })
-            
+
         let createWorkerConfig dir =
              async { return () }
 
@@ -127,22 +127,22 @@ module Cluster =
             // We always need the docker plugin and an agent...
             initFlocker dir (fun flockerDir ->
               async {
-                let! stdOut = 
+                let! stdOut =
                     DockerWrapper.flockerca flockerDir "create-node-certificate"
                     |> CreateProcess.ensureExitCode
                     |> Proc.startAndAwait
                 let genName = stdOut.Split([| ' ' |]).[1].Split([|'.'|]).[0]
                 handle (Path.Combine(flockerDir, sprintf "%s.crt" genName)) (Path.Combine(flockerDir, "node.crt"))
                 handle (Path.Combine(flockerDir, sprintf "%s.key" genName)) (Path.Combine(flockerDir, "node.key"))
-                
+
                 deleteIfExists (Path.Combine(flockerDir, "plugin.crt"))
                 deleteIfExists (Path.Combine(flockerDir, "plugin.key"))
-                let! res = 
+                let! res =
                     DockerWrapper.flockerca flockerDir "create-api-certificate plugin"
                     |> CreateProcess.ensureExitCode
                     |> Proc.startAndAwait
 
-                ()  
+                ()
             })
         for i in 1 .. masterNodes do
             let dir = StoragePath.getMasterNodeDir clusterName i
@@ -155,7 +155,7 @@ module Cluster =
             do! createBaseConfig dir
             do! createWorkerConfig dir
 
-        
+
         // Store new secret
         GlobalConfig.readConfig()
         |> GlobalConfig.setSecret clusterName secret
@@ -190,7 +190,7 @@ module Cluster =
             let f = Path.Combine(flockerDir, keyFile)
             if File.Exists f then
                 IO.chmod IO.CmodOptions.None (LanguagePrimitives.EnumOfValue 0o0600u) f
-        
+
         let flockerPluginDir = Path.Combine(hostRoot, "run", "docker", "plugins", "flocker")
         if Directory.Exists flockerPluginDir then
             Directory.Delete (flockerPluginDir, true)
@@ -198,7 +198,7 @@ module Cluster =
         do! HostInteraction.installFlocker nodeName nodeType
 
         if Env.isVerbose then printfn "machine successfully provisioned."
-        
+
         ()
       }
 
@@ -216,16 +216,16 @@ module Cluster =
                 failwithf "Cluster is already initialized. Use force if you really want to initialize again."
 
         let masterAsWorker = ClusterConfig.getMasterAsWorker cc
-        
+
         if Env.isVerbose then printfn "checking config."
 
         CloudProviders.ensureConfig clusterName cc
 
-        
+
         if Env.isVerbose then printfn "extracting config."
-        
+
         let replacedAgentYml = CloudProviders.getAgentConfig clusterName cc
-        
+
         if Env.isVerbose then printfn "provision nodes."
         let nodeDir = StoragePath.getNodesDir clusterName
         let nodes = Storage.getNodes nodeDir
@@ -234,14 +234,14 @@ module Cluster =
         for { Type = t; Dir = dir } in nodes |> Seq.sortBy (fun n -> match n.Type with | Storage.NodeType.PrimaryMaster -> 0 | Storage.NodeType.Master -> 1 | Storage.NodeType.Worker -> 2) do
             let flockerDir = StoragePath.ensureAndReturnDir (Path.Combine (dir, "etc", "flocker"))
             File.WriteAllText (Path.Combine(flockerDir, "agent.yml"), replacedAgentYml)
-            
+
             // create machine
             let nodeName = Storage.getNodeNameByDir dir
             let machine = DockerMachine.getMachineName clusterName nodeName
-            
+
             if Env.isVerbose then printfn "create '%s' docker machine." machine
 
-            let! res = 
+            let! res =
                 DockerMachine.createProcess clusterName ([|"status"; machine|] |> Arguments.OfArgs)
                 |> Proc.startRaw
                 |> Async.AwaitTask
@@ -252,7 +252,7 @@ module Cluster =
                 ()
 
             Storage.quickSaveClusterWithStoredSecret clusterName
-        
+
             // Get IP and ensure networking
             match t with
             | Storage.NodeType.PrimaryMaster ->
@@ -264,12 +264,12 @@ module Cluster =
             | _ when System.Object.ReferenceEquals(primaryMasterIp, null) ->
                 failwith "primary master needs to be initialized first!"
             | _ -> ()
- 
+
             // Write '__CLUSTER_NAME__-master-01' into /etc/hosts
             let hostname = sprintf "%s-master-01" clusterName
             do!
-                DockerMachine.createProcess clusterName 
-                    (sprintf "ssh %s sudo bash -c \\\"if grep -q '%s' /etc/hosts; then echo master-01 reference exists; else echo '%s %s' >> /etc/hosts; fi\\\"" 
+                DockerMachine.createProcess clusterName
+                    (sprintf "ssh %s sudo bash -c \\\"if grep -q '%s' /etc/hosts; then echo master-01 reference exists; else echo '%s %s' >> /etc/hosts; fi\\\""
                     machine  hostname primaryMasterIp hostname
                      |> Arguments.OfWindowsCommandLine)
                 |> CreateProcess.ensureExitCode
@@ -278,12 +278,12 @@ module Cluster =
             // provision machine / flocker
             if Env.isVerbose then printfn "upload provision config '%s'." machine
             do!
-                DockerMachine.createProcess clusterName 
+                DockerMachine.createProcess clusterName
                     (sprintf "ssh %s sudo rm -rf /yaaf-provision && sudo mkdir /yaaf-provision && sudo chmod 777 /yaaf-provision" machine
                      |> Arguments.OfWindowsCommandLine)
                 |> CreateProcess.ensureExitCodeWithMessage "failed to prepare folders"
                 |> Proc.startAndAwait
-            
+
             do! DockerMachine.createProcess clusterName (sprintf "scp -r \"%s\" %s:/yaaf-provision/machine" dir machine |> Arguments.OfWindowsCommandLine)
                 |> CreateProcess.ensureExitCodeWithMessage "failed to run scp"
                 |> Proc.startAndAwait
@@ -300,14 +300,14 @@ module Cluster =
 
             // Update tag (useful for development)
             do!
-                DockerMachine.createProcess clusterName 
+                DockerMachine.createProcess clusterName
                     (sprintf "ssh %s sudo docker pull %s" machine DockerImages.clusterManagement
                      |> Arguments.OfWindowsCommandLine)
                 |> CreateProcess.ensureExitCodeWithMessage "failed to provision machine."
                 |> Proc.startAndAwait
             do!
-                DockerMachine.createProcess clusterName 
-                    (sprintf "ssh %s sudo docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v /:/host %s %s provision --cluster %s --nodename %s --nodetype %s" 
+                DockerMachine.createProcess clusterName
+                    (sprintf "ssh %s sudo docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v /:/host %s %s provision --cluster %s --nodename %s --nodetype %s"
                         machine DockerImages.clusterManagement (if Env.isVerbose then "-v" else "")
                         clusterName nodeName nodeType
                      |> Arguments.OfWindowsCommandLine)
@@ -320,25 +320,27 @@ module Cluster =
         // From an high level perspective the above is already a fully functionaly cluster, as long as no configuration is required.
         // therefore we should make sure to deploy consul and vault only with high-level functionality available to other software as well
         // like `clustermanagement docker-machine ssh`
-        
+
         // Deploy Swarm
         Deploy.deployIntegrated clusterName "DeploySwarm.fsx"
-        
+
         // Deploy Consul
-        Deploy.deployIntegrated clusterName "DeployConsul.fsx"
+        // NOTE TO MYSELF: Consul is way to hard to deploy within swarm
+        // as containers will be assigned to new IPs Consul will not recover from outages...
+        //Deploy.deployIntegrated clusterName "DeployConsul.fsx"
 
         // Deploy ClusterManagement
         Deploy.deployIntegrated clusterName "DeployClusterManagement.fsx"
 
         // Deploy Vault
-        Deploy.deployIntegrated clusterName "DeployVault.fsx"
+        //Deploy.deployIntegrated clusterName "DeployVault.fsx"
       }
-      
+
     // Kill all containers which block deletion of volumes
     let private killBlockingServices (d:DeployInfo) clusterName =
         async {
         // shutdown all services.
-        let! services = 
+        let! services =
             DockerWrapper.listServices ()
             |> DockerMachine.runSudoDockerOnNode clusterName "master-01"
             |> Proc.startAndAwait
@@ -358,7 +360,7 @@ module Cluster =
                     match inspect.Config.Labels.ComDockerSwarmServiceName with
                     | Some service ->
                         // might have been deleted already (above), but just to be safe...
-                        let! res = 
+                        let! res =
                             DockerWrapper.removeService service
                             |> DockerMachine.runSudoDockerOnNode clusterName n.Name
                             |> CreateProcess.redirectOutput
@@ -382,7 +384,7 @@ module Cluster =
             let d = Deploy.getInfoInternal clusterName [||]
             try
                 do! killBlockingServices d clusterName
-            
+
                 // Clear/Delete volumes -> Sets them to status "deleting"
                 let! datasets = Volume.list clusterName
                 for d in datasets do
@@ -404,7 +406,7 @@ module Cluster =
                         do! HostInteraction.restartFlocker clusterName d.Nodes
                         // again try to kill all services/containers
                         do! killBlockingServices d clusterName
-            
+
                 if iter = maxIter then
                     eprintfn "COULD NOT DELETE ALL FLOCKER IMAGES. DATA MIGHT BE LEFT - PLEASE DELETE THEM YOURSELF (FOR EXAMPLE IN YOUR AWS CONSOLE)."
             with e ->
@@ -435,5 +437,5 @@ module Cluster =
                 eprintfn "WARN: Deleting an initialized cluster!"
             else
                 failwithf "This cluster is already initialized. Use --force to delete it anyway."
-        
+
         Storage.deleteCluster clusterName

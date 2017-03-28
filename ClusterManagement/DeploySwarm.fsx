@@ -7,7 +7,7 @@ open ClusterManagement
 let d = Deploy.getInfo()
 if Env.isVerbose then
     printfn "Deploying Docker-Swarm to cluster '%s'" d.ClusterName
-    
+
 let mutable primaryMasterIp = Unchecked.defaultof<_>
 let mutable primaryMasterWorkerToken = Unchecked.defaultof<_>
 let mutable primaryMasterManagerToken = Unchecked.defaultof<_>
@@ -42,10 +42,10 @@ for n in d.Nodes |> Seq.sortBy (fun n -> match n.Type with Storage.NodeType.Prim
     match n.Type with
     | Storage.NodeType.PrimaryMaster ->
         // First master
-        let res = 
+        let res =
             runDocker (sprintf "swarm init --advertise-addr %s" ip)
             |> Proc.ensureExitCodeGetResult
-        
+
         let managerToken =
             runDocker "swarm join-token -q manager"
             |> Proc.ensureExitCodeGetResult
@@ -59,20 +59,20 @@ for n in d.Nodes |> Seq.sortBy (fun n -> match n.Type with Storage.NodeType.Prim
         primaryMasterWorkerToken <- workerToken
         ()
     | Storage.NodeType.Master ->
-        let res = 
+        let res =
             runDocker
                 (sprintf "swarm join --token %s %s"
                 primaryMasterManagerToken primaryMasterIp)
         res |> Proc.ensureExitCodeGetResult |> ignore
         ()
     | Storage.NodeType.Worker ->
-        let res = 
+        let res =
             runDocker
                 (sprintf "swarm join --token %s %s"
                 primaryMasterWorkerToken primaryMasterIp)
         res |> Proc.ensureExitCodeGetResult |> ignore
         ()
-  
+
 runDocker "network create --subnet 10.0.0.0/24 --driver overlay --attachable --opt encrypted swarm-net"
     |> ignore
 

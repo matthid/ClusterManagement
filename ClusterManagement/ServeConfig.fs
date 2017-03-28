@@ -17,7 +17,7 @@ module ServeConfig =
                 if date + TimeSpan.FromMinutes 10.0 < now then
                     Directory.Delete(dir, true)
                     cleanupDirs.Remove t |> ignore
-                    
+
         let writeTempFile fileName bytes =
             cleanup()
             let tmpDir = Path.GetTempFileName()
@@ -29,47 +29,48 @@ module ServeConfig =
             tmpFile
 
     type ConsulGetJson = FSharp.Data.JsonProvider<"consul-get-sample.json">
-    let private tokenStart = "yaaf/config/tokens/"
-    let private tokenFromProvider logger (p:ConsulGetJson.Root[]) =
-        p
-        |> Seq.map (fun v ->
-            let key = if (v.Key.StartsWith(tokenStart)) then v.Key.Substring(tokenStart.Length) else v.Key
-            if key = v.Key then
-                logger Logging.LogLevel.Error (fun _ -> sprintf "Token '%s' not starting with '%s'" v.Key tokenStart)
-
-            { ClusterConfig.Token.Name = key; ClusterConfig.Token.Value = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(v.Value)) })
-        |> Seq.toList
     let private createLogger ctx =
         (fun level createMsg -> ctx.runtime.logger.log level (fun level -> Logging.Message.event level (createMsg(level))) |> Async.RunSynchronously)
-    let app =
+    let consulBackendApp =
+        let tokenStart = "yaaf/config/tokens/"
+        let tokenFromProvider logger (p:ConsulGetJson.Root[]) =
+            p
+            |> Seq.map (fun v ->
+                let key = if (v.Key.StartsWith(tokenStart)) then v.Key.Substring(tokenStart.Length) else v.Key
+                if key = v.Key then
+                    logger Logging.LogLevel.Error (fun _ -> sprintf "Token '%s' not starting with '%s'" v.Key tokenStart)
+
+                { ClusterConfig.Token.Name = key; ClusterConfig.Token.Value = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(v.Value)) })
+            |> Seq.toList
+
         WebPart.choose [
-            Filters.POST 
+            Filters.POST
             >=> Suave.Filters.path "/v1/tokenize-config"
             >=> Suave.Writers.setMimeType "application/text; charset=utf-8"
-            >=> (fun ctx -> 
+            >=> (fun ctx ->
                     async {
                         let file = ctx.request.files.Head
                         // curl http://consul:8500/v1/kv/yaaf/config/tokens?recurse=true
-                        let! loadAsync = 
+                        let! loadAsync =
                             ConsulGetJson.AsyncLoad ("http://consul:8500/v1/kv/yaaf/config/tokens?recurse=true")
                         let tokens =
                             loadAsync |> tokenFromProvider (createLogger ctx)
                         Config.replaceTokensInFile tokens file.tempFilePath
                         return! Files.sendFile file.tempFilePath false ctx
                     })
-            Filters.PUT 
+            Filters.PUT
             >=> Suave.Filters.pathStarts "/v1/config-files/"
             >=> Suave.Writers.setMimeType "application/text; charset=utf-8"
-            >=> (fun ctx -> 
+            >=> (fun ctx ->
                     async {
                         match ctx.request.files with
                         | [ file ] ->
-                            
+
                             let filePath = ctx.request.url.PathAndQuery.Substring("/v1/config-files/".Length)
                             let bytes = System.IO.File.ReadAllBytes file.tempFilePath
                             let data = Convert.ToBase64String(bytes)
                             let request =
-                                sprintf """[ { "KV": { "Verb": "set", "Key": "yaaf/config/files/%s", "Value": "%s" } } ]""" 
+                                sprintf """[ { "KV": { "Verb": "set", "Key": "yaaf/config/files/%s", "Value": "%s" } } ]"""
                                     filePath data
                             let client = new HttpClient()
                             try
@@ -87,18 +88,17 @@ module ServeConfig =
                                     eprintfn "Error while disposing 'client': %O" e
                         | _ ->
                             return! RequestErrors.BAD_REQUEST (sprintf "expected exactly one file, but got %d." ctx.request.files.Length) ctx
-                            
                     })
             Filters.GET // test with: curl http://clustermanagement/v1/config-files/ssl/cacert.pem
             >=> Suave.Filters.pathStarts "/v1/config-files/"
             >=> Suave.Writers.setMimeType "application/text; charset=utf-8"
-            >=> (fun ctx -> 
+            >=> (fun ctx ->
                     async {
                         let filePath = ctx.request.url.PathAndQuery.Substring("/v1/config-files/".Length)
                         let fileName = System.IO.Path.GetFileName filePath
-                        let! loadAsync = 
+                        let! loadAsync =
                             ConsulGetJson.AsyncLoad (sprintf "http://consul:8500/v1/kv/yaaf/config/files/%s" filePath)
-                        
+
                         let tokens =
                             loadAsync
                             |> Seq.map (fun v -> Convert.FromBase64String(v.Value))
@@ -110,14 +110,14 @@ module ServeConfig =
                         | None ->
                             return! Suave.RequestErrors.NOT_FOUND "the given file is not available" ctx
                     })
-            Filters.GET 
+            Filters.GET
             >=> Suave.Filters.path "/v1/cluster-name"
             >=> Suave.Writers.setMimeType "application/text; charset=utf-8"
-            >=> (fun ctx -> 
+            >=> (fun ctx ->
                     async {
-                        let! loadAsync = 
+                        let! loadAsync =
                             ConsulGetJson.AsyncLoad ("http://consul:8500/v1/kv/yaaf/config/tokens/CLUSTER_NAME")
-                        
+
                         let tokens =
                             loadAsync
                             |> tokenFromProvider (createLogger ctx)
@@ -129,6 +129,73 @@ module ServeConfig =
                             return! Suave.ServerErrors.SERVICE_UNAVAILABLE "the cluster name is not available" ctx
                     })
         ]
+
+    let privateBackendApp =
+        let settingsDir = "/workdir"
+        let tokenFile = System.IO.Path.Combine(settingsDir, StoragePath.clusterConfig)
+        let mutable config = ClusterConfig.readConfigFromFile tokenFile
+        let updateConfig () =
+            // New tokens will be loaded from files.
+            let latest = ClusterConfig.readConfigFromFile tokenFile
+            config <-
+                ClusterConfig.getTokens latest
+                |> Seq.fold (fun s tok -> ClusterConfig.setConfig tok.Name tok.Value s) config
+            ClusterConfig.writeClusterConfigToFile tokenFile config
+        let getConfigFilePath relative =
+            let newPath = System.IO.Path.Combine(settingsDir, StoragePath.configFilesDirName, relative)
+            System.IO.Path.GetDirectoryName newPath |> StoragePath.ensureAndReturnDir |> ignore
+            newPath
+        WebPart.choose [
+            Filters.POST
+            >=> Suave.Filters.path "/v1/tokenize-config"
+            >=> Suave.Writers.setMimeType "application/text; charset=utf-8"
+            >=> (fun ctx ->
+                    async {
+                        updateConfig()
+                        let file = ctx.request.files.Head
+                        let tokens = ClusterConfig.getTokens config
+                        Config.replaceTokensInFile tokens file.tempFilePath
+                        return! Files.sendFile file.tempFilePath false ctx
+                    })
+            Filters.PUT
+            >=> Suave.Filters.pathStarts "/v1/config-files/"
+            >=> Suave.Writers.setMimeType "application/text; charset=utf-8"
+            >=> (fun ctx ->
+                    async {
+                        match ctx.request.files with
+                        | [ file ] ->
+                            let filePath = ctx.request.url.PathAndQuery.Substring("/v1/config-files/".Length)
+                            System.IO.File.Copy(file.tempFilePath, getConfigFilePath filePath)
+                            return! Successful.OK "life is good." ctx
+                        | _ ->
+                            return! RequestErrors.BAD_REQUEST (sprintf "expected exactly one file, but got %d." ctx.request.files.Length) ctx
+                    })
+            Filters.GET // test with: curl http://clustermanagement/v1/config-files/ssl/cacert.pem
+            >=> Suave.Filters.pathStarts "/v1/config-files/"
+            >=> Suave.Writers.setMimeType "application/text; charset=utf-8"
+            >=> (fun ctx ->
+                    async {
+                        let filePath = ctx.request.url.PathAndQuery.Substring("/v1/config-files/".Length)
+                        let actualFilePath = getConfigFilePath filePath
+                        if System.IO.File.Exists actualFilePath then
+                            return! Files.file (getConfigFilePath filePath) ctx
+                        else
+                            return! RequestErrors.NOT_FOUND (sprintf "The file '%s' was not found" filePath) ctx
+                    })
+            Filters.GET
+            >=> Suave.Filters.path "/v1/cluster-name"
+            >=> Suave.Writers.setMimeType "application/text; charset=utf-8"
+            >=> (fun ctx ->
+                    async {
+                        let value = ClusterConfig.getConfig "CLUSTER_NAME" config
+                        match value with
+                        | Some clusterName ->
+                            return! Successful.OK clusterName ctx
+                        | None ->
+                            return! Suave.ServerErrors.SERVICE_UNAVAILABLE "the cluster name is not available" ctx
+                    })
+        ]
+
     let mimeTypes =
         Writers.defaultMimeTypesMap
         @@ (function | _ -> Writers.createMimeType "application/octet-stream" false)
@@ -140,7 +207,7 @@ module ServeConfig =
         | _ -> ()
 
     let config =
-        { defaultConfig with 
+        { defaultConfig with
             bindings = [ HttpBinding.create HTTP IPAddress.Any 80us ]
             mimeTypesMap = mimeTypes
             logger = { new Logging.Logger with
@@ -148,11 +215,11 @@ module ServeConfig =
                         member __.log level getMsg =
                             async {
                                 mylogging level getMsg
-                            } 
+                            }
                         member __.logWithAck level getMsg =
                             async {
                                 mylogging level getMsg
                             }}
         }
     let startServer () =
-        startWebServer config app
+        startWebServer config privateBackendApp

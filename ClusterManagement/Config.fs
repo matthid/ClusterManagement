@@ -3,7 +3,6 @@ namespace ClusterManagement
 open System.IO
 
 module Config =
-    
     let getTokens clusterName cc =
         let rawTokens = ClusterConfig.getTokens cc
         Seq.append rawTokens [ { ClusterConfig.Token.Name = "CLUSTER_NAME"; Value = clusterName}]
@@ -18,9 +17,9 @@ module Config =
       let fileText = File.ReadAllText f
       let replaced = replaceTokens tokens fileText
       if fileText = replaced then
-        eprintfn "No tokens where found in '%s', have %A. Text was: %s" f (tokens |> Seq.toList) fileText 
+        eprintfn "No tokens where found in '%s', have %A. Text was: %s" f (tokens |> Seq.toList) fileText
       File.WriteAllText(f, replaced)
-    
+
     let set clusterName key value =
         //Storage.openClusterWithStoredSecret clusterName
         ClusterConfig.readClusterConfig clusterName
