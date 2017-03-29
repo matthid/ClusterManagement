@@ -7,7 +7,7 @@ type NodeType =
 
 module HostInteraction =
     let chrootPath = ref "chroot"
-        
+
     type SupportedHost =
         | Ubuntu16_04
         | GenericDocker
@@ -16,7 +16,7 @@ module HostInteraction =
             | "Ubuntu 16.04" -> Ubuntu16_04
             | _ -> failwithf "Unknown host '%s'" s
 
-        
+
     let chrootHost command =
         let args = command |> Arguments.OfWindowsCommandLine
         let usingArgs =
@@ -28,7 +28,7 @@ module HostInteraction =
             match createProcess.Command with
             | ShellCommand s -> s
             | RawCommand (f, arg) -> sprintf "%s %s" f arg.ToWindowsCommandLine
-            
+
         chrootHost cmdLine
         |> CreateProcess.withResultFunc createProcess.GetResult
         |> CreateProcess.addSetup createProcess.Setup
@@ -60,7 +60,7 @@ module HostInteraction =
                     |> CreateProcess.redirectOutput
                     |> CreateProcess.warnOnExitCode "Failed to kill container"
                     |> Proc.startAndAwait
-            
+
                 let! res =
                     [|"rm"; service|]
                     |> Arguments.OfArgs
@@ -68,7 +68,7 @@ module HostInteraction =
                     |> CreateProcess.redirectOutput
                     |> CreateProcess.warnOnExitCode  "Failed to remove container"
                     |> Proc.startAndAwait
-                
+
                 ()
         | Ubuntu16_04 ->
             // see https://flocker-docs.clusterhq.com/en/latest/docker-integration/enabling-control-service.html#ubuntu-16-04
@@ -90,15 +90,15 @@ module HostInteraction =
         | GenericDocker ->
             // Start flocker control service
             if nodeName.EndsWith "master-01" then
-                let! res = 
+                let! res =
                     (sprintf "run --name=flocker-control-volume -v /var/lib/flocker %s:%s true" DockerImages.flockerControlService DockerImages.flockerTag)
                     |> Arguments.OfWindowsCommandLine
                     |> DockerWrapper.createProcess
                     |> CreateProcess.redirectOutput
                     |> CreateProcess.warnOnExitCode "Failed to create volume container, it might already exist"
                     |> Proc.startAndAwait
-            
-                do! 
+
+                do!
                     (sprintf "run --restart=always -d --net=host -v /etc/flocker:/etc/flocker --volumes-from=flocker-control-volume --name=flocker-control-service %s:%s" DockerImages.flockerControlService DockerImages.flockerTag)
                     |> Arguments.OfWindowsCommandLine
                     |> DockerWrapper.createProcess
@@ -127,10 +127,10 @@ module HostInteraction =
             // see https://flocker-docs.clusterhq.com/en/latest/docker-integration/manual-install.html
             do! chrootHost "apt-get update" |> CreateProcess.ensureExitCode |> Proc.startAndAwait
             do! chrootHost "apt-get -y install apt-transport-https software-properties-common" |> CreateProcess.ensureExitCode |> Proc.startAndAwait
-            do! 
+            do!
                 "add-apt-repository -y \"deb https://clusterhq-archive.s3.amazonaws.com/ubuntu/$(lsb_release --release --short)/\\$(ARCH) /\""
                 |> Bash.runCommand |> chrootHostExt |> CreateProcess.ensureExitCode |> Proc.startAndAwait
-            
+
             System.IO.File.WriteAllText ("/host/tmp/apt-pref", """Package: *
 Pin: origin clusterhq-archive.s3.amazonaws.com
 Pin-Priority: 700""")
@@ -140,15 +140,16 @@ Pin-Priority: 700""")
             do! chrootHost "apt-get -y install --force-yes clusterhq-flocker-cli" |> CreateProcess.ensureExitCode |> Proc.startAndAwait
             do! chrootHost "apt-get -y install --force-yes clusterhq-flocker-node" |> CreateProcess.ensureExitCode |> Proc.startAndAwait
             do! chrootHost "apt-get -y install --force-yes clusterhq-flocker-docker-plugin" |> CreateProcess.ensureExitCode |> Proc.startAndAwait
-            
+
             // Start services
             if nodeName.EndsWith "master-01" then
                 do! chrootHost "systemctl enable flocker-control" |> CreateProcess.ensureExitCode |> Proc.startAndAwait
                 do! chrootHost "systemctl start flocker-control" |> CreateProcess.ensureExitCode |> Proc.startAndAwait
             do! chrootHost "systemctl enable flocker-dataset-agent" |> CreateProcess.ensureExitCode |> Proc.startAndAwait
             do! chrootHost "systemctl start flocker-dataset-agent" |> CreateProcess.ensureExitCode |> Proc.startAndAwait
-            do! chrootHost "systemctl enable flocker-container-agent" |> CreateProcess.ensureExitCode |> Proc.startAndAwait
-            do! chrootHost "systemctl start flocker-container-agent" |> CreateProcess.ensureExitCode |> Proc.startAndAwait
+            // Not required, and in fact it will fill the drive with logs...
+            //do! chrootHost "systemctl enable flocker-container-agent" |> CreateProcess.ensureExitCode |> Proc.startAndAwait
+            //do! chrootHost "systemctl start flocker-container-agent" |> CreateProcess.ensureExitCode |> Proc.startAndAwait
             do! chrootHost "systemctl enable flocker-docker-plugin" |> CreateProcess.ensureExitCode |> Proc.startAndAwait
             do! chrootHost "systemctl start flocker-docker-plugin" |> CreateProcess.ensureExitCode |> Proc.startAndAwait
 
@@ -163,8 +164,8 @@ Pin-Priority: 700""")
                 let! containers = DockerMachine.runDockerPs clusterName n.Name |> Proc.startAndAwait
                 for container in containers do
                     let! inspect = DockerMachine.runDockerInspect clusterName n.Name container.ContainerId |> Proc.startAndAwait
-                    if inspect.Name.Contains "flocker-control-service" 
-                    || inspect.Name.Contains "flocker-dataset-agent" 
+                    if inspect.Name.Contains "flocker-control-service"
+                    || inspect.Name.Contains "flocker-dataset-agent"
                     || inspect.Name.Contains "flocker-docker-plugin" then
                         do! DockerWrapper.createProcess ([|"restart"; container.ContainerId|] |> Arguments.OfArgs)
                             |> DockerMachine.runSudoDockerOnNode clusterName n.Name

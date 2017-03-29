@@ -37,7 +37,9 @@ try
         |> ClusterConfig.setConfig "CLUSTER_NAME" d.ClusterName
         |> ClusterConfig.writeClusterConfigToFile tmpConfig
 
-    IO.cp { IO.CopyOptions.Default with DoOverwrite = true } (StoragePath.getConfigFilesDir d.ClusterName) (System.IO.Path.Combine(tmpPath, StoragePath.configFilesDirName))
+    let source = StoragePath.getConfigFilesDir d.ClusterName
+    let target = System.IO.Path.Combine(tmpPath, StoragePath.configFilesDirName)
+    IO.cp { IO.CopyOptions.Default with DoOverwrite = true; IsRecursive = true } source target
     Volume.copyContents "." CopyDirection.Upload d.ClusterName volName tmpPath
         |> Async.RunSynchronously
 finally

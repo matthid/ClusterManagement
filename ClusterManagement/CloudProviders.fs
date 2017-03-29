@@ -1,7 +1,7 @@
 ﻿namespace ClusterManagement
 
-module CloudProviders = 
-    
+module CloudProviders =
+
     type SupportedProviders =
         | AWS
         | Generic
@@ -11,7 +11,6 @@ module CloudProviders =
             | "GENERIC" -> Generic
             | _ -> failwithf "Unknown provider '%s'" s
 
-            
     let getProvider clusterConfig =
         ClusterConfig.getConfig "PROVIDER" clusterConfig
         |> Option.map SupportedProviders.FromString
@@ -22,7 +21,7 @@ module CloudProviders =
         | AWS ->
             for n in [ "AWS_ACCESS_KEY_ID"; "AWS_ACCESS_KEY_SECRET"; "AWS_REGION"; "AWS_ZONE" ] do
                 Config.ensureConfig clusterName n clusterConfig
-        | Generic -> 
+        | Generic ->
             for n in [ "SSH_KEY"; "SSH_HOST" ] do // TODO: add support for multiple keys, and check later while creating machines?...
                 Config.ensureConfig clusterName n clusterConfig
             ()
@@ -45,7 +44,7 @@ module CloudProviders =
             let tmp = System.IO.Path.GetTempFileName()
             System.IO.File.WriteAllText(tmp, privKey)
             do!
-                DockerMachine.createProcess clusterName 
+                DockerMachine.createProcess clusterName
                     ([|
                         yield! ["create"; "--driver"; "generic"]
                         match ClusterConfig.getConfig "SSH_PORT" clusterConfig with
@@ -82,11 +81,11 @@ aws <command> *)
             match ClusterConfig.getConfig name clusterConfig with
             | Some va -> va
             | None -> failwithf "Expected config %s" name
-            
+
         let keyId = forceConfig "AWS_ACCESS_KEY_ID"
         let secret = forceConfig "AWS_ACCESS_KEY_SECRET"
         let region = forceConfig "AWS_REGION"
-        
+
         (sprintf "run --rm --env AWS_ACCESS_KEY_ID=%s --env AWS_SECRET_ACCESS_KEY=%s --env AWS_DEFAULT_REGION=%s garland/aws-cli-docker aws %s"
             keyId secret region command)
             |> Arguments.OfWindowsCommandLine
@@ -100,7 +99,7 @@ aws <command> *)
                 DockerMachine.inspect clusterName "master-01"
                 |> Proc.startAndAwait
             let securityGroupId = res.Driver.SecurityGroupIds.[0]
-            let! res = 
+            let! res =
                 runAws clusterConfig (sprintf "ec2 authorize-security-group-ingress --group-id %s --protocol all --port 0-65535 --source-group %s" securityGroupId securityGroupId)
                 |> CreateProcess.redirectOutput
                 |> Proc.startRaw
