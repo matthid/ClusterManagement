@@ -4,7 +4,7 @@ FROM buildpack-deps:trusty
 # modified from https://github.com/fsprojects/docker-fsharp/blob/master/4.1.18/mono/Dockerfile
 # and https://github.com/mono/docker/blob/5d27cb132d84e12b8d983f4690c1ef716dc177db/5.0.0.100/Dockerfile
 ENV MONO_THREADS_PER_CPU 50
-RUN MONO_VERSION=5.0.0.100 && \
+RUN MONO_VERSION=5.0.1 && \
     FSHARP_VERSION=4.1.18 && \
     FSHARP_PREFIX=/usr && \
     FSHARP_GACDIR=/usr/lib/mono/gac && \
@@ -15,7 +15,7 @@ RUN MONO_VERSION=5.0.0.100 && \
     apt-key adv --keyserver hkp://p80.pool.sks-keyservers.net:80 --recv-keys 3FA7E0328081BFF6A14DA29AA6A19B38D3D831EF && \
     echo "deb http://download.mono-project.com/repo/debian wheezy/snapshots/$MONO_VERSION main" > /etc/apt/sources.list.d/mono-xamarin.list && \
     apt-get update -y && \
-    apt-get --no-install-recommends install -y docker.io autoconf libtool pkg-config make git automake curl nuget mono-devel ca-certificates-mono && \
+    apt-get --no-install-recommends install -y docker.io autoconf libtool pkg-config make git automake curl nuget mono-devel msbuild ca-certificates-mono && \
     rm -rf /var/lib/apt/lists/* && \
     mkdir -p /tmp/src && \
     cd /tmp/src && \
