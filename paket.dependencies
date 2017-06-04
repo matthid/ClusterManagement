@@ -11,6 +11,7 @@ nuget Mono.Posix
 nuget NUnit
 nuget Unquote
 nuget FSharp.Compiler.Service
+nuget FSharp.Compiler.Tools
 nuget Suave
 // NuGet package with higher version doesn't support mono apparently
 nuget System.Net.Http 4.0.0

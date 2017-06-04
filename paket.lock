@@ -6,6 +6,7 @@ NUGET
     FSharp.Compiler.Service (11.0.6)
       System.Collections.Immutable (>= 1.2)
       System.Reflection.Metadata (>= 1.4.1-beta-24227-04)
+    FSharp.Compiler.Tools (4.1.17)
     FSharp.Configuration (0.6.4)
     FSharp.Core (4.1.0.2)
       System.ValueTuple (>= 4.3)

@@ -1,6 +1,7 @@
 Argu
 FSharp.Core
 FSharp.Configuration
+FSharp.Compiler.Tools
 FSharp.Data
 Mono.Posix
 NUnit

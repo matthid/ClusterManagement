@@ -4,6 +4,7 @@ FSharp.Configuration
 FSharp.Data
 Mono.Posix
 FSharp.Compiler.Service
+FSharp.Compiler.Tools
 Suave
 System.Net.Http
 
