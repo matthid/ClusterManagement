@@ -15,6 +15,8 @@ then
   packages/build/FAKE/tools/FAKE.exe $@ --fsiargs -d:MONO build.fsx 
 else
   # use mono
+  # workaround https://github.com/fsharp/FAKE/pull/1578
+  MSBuild="msbuild"
   mono paket.exe restore
   exit_code=$?
   if [ $exit_code -ne 0 ]; then
