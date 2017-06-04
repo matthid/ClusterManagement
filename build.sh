@@ -1,4 +1,5 @@
 #!/bin/bash
+
 if test "$OS" = "Windows_NT"
 then
   # use .Net
