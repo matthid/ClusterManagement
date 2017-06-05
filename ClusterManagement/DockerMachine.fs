@@ -146,17 +146,23 @@ module DockerMachine =
     let remove force cluster machineName =
         createProcess cluster ([| yield "rm"; if force then yield "-f"; yield "-y"; yield machineName |] |> Arguments.OfArgs)
 
-    let copyContents fileName direction cluster node localDir remoteDir  =
+    let copyContentsExt makeLocal makeRemote fileName direction localDir remoteDir  =
       async {
+        let isRealLocal, makeLocal =
+            match makeLocal with
+            | Some f -> false, f
+            | None -> true, id
+        
         match direction with
         | Download ->
-            System.IO.Directory.CreateDirectory(localDir) |> ignore
+            if isRealLocal then
+                System.IO.Directory.CreateDirectory(localDir) |> ignore
         | Upload ->
-            if System.IO.Directory.Exists(localDir) |> not then
-                failwithf "To upload a directory it needs to exist (%s)!" localDir
+            if isRealLocal then
+                if System.IO.Directory.Exists(localDir) |> not then
+                    failwithf "To upload a directory it needs to exist (%s)!" localDir
             do! CreateProcess.fromRawCommand "mkdir" [|remoteDir|]
-                |> Sudo.wrapCommand
-                |> sshExt cluster node
+                |> makeRemote
                 |> Proc.startAndAwait
 
         // We use tar to copy, because scp doesn't work because of permissions
@@ -166,10 +172,10 @@ module DockerMachine =
             match direction with
             | Download ->
                 CreateProcess.fromRawCommand "tar" [|"-c";"-C";remoteDir; fileName|]
-                |> Sudo.wrapCommand
-                |> sshExt cluster node
+                |> makeRemote
             | Upload ->
                 CreateProcess.fromRawCommand "tar" [|"-c";"-C";localDir; fileName|]
+                |> makeLocal
             |> CreateProcess.withStandardOutput (StreamSpecification.CreatePipe streamRef)
             |> CreateProcess.ensureExitCode
             |> Proc.start
@@ -177,10 +183,10 @@ module DockerMachine =
             match direction with
             | Download ->
                 CreateProcess.fromRawCommand "tar" [|"-x";"--no-same-owner";"-C";localDir|]
+                |> makeLocal
             | Upload ->
                 CreateProcess.fromRawCommand "tar" [|"-x";"--no-same-owner";"-C";remoteDir|]
-                |> Sudo.wrapCommand
-                |> sshExt cluster node
+                |> makeRemote
             |> CreateProcess.withStandardInput (StreamSpecification.UseStream(false, streamRef.Value))
             |> CreateProcess.ensureExitCode
             |> Proc.start
@@ -188,5 +194,11 @@ module DockerMachine =
         do! compressProc |> Async.AwaitTask
         do! extractProc |> Async.AwaitTask
       }
+
+    let copyContents fileName direction cluster node localDir remoteDir =
+        let makeRemote =
+            Sudo.wrapCommand >> sshExt cluster node
+        let makeLocal = None
+        copyContentsExt makeLocal makeRemote fileName direction localDir remoteDir
 
     let copyDir direction cluster node localDir remoteDir = copyContents "." direction cluster node localDir remoteDir

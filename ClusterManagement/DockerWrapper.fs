@@ -339,6 +339,18 @@ module DockerWrapper =
     let removeService service =
         createProcess ([|"service"; "rm"; service|] |> Arguments.OfArgs)
         //|> CreateProcess.ensureExitCode
+        
+    let exec containerId (proc:CreateProcess<_>) =
+        let cmdLine =
+            match proc.Command with
+            | ShellCommand s -> s
+            | RawCommand (f, arg) -> sprintf "%s %s" f arg.ToWindowsCommandLine
+            |> Arguments.OfWindowsCommandLine
+        createProcess ([| yield! ["exec"; containerId ]; yield! cmdLine.Args |] |> Arguments.OfArgs)
+        |> CreateProcess.withResultFunc proc.GetResult
+        |> CreateProcess.addSetup proc.Setup
+        |> fun c -> match proc.Environment with | Some env -> c |> CreateProcess.withEnvironment env | None -> c
+        |> fun c -> match proc.WorkingDirectory with | Some wd -> c |> CreateProcess.withWorkingDirectory wd | None -> c
 
 module DockerMachineWrapper =
     let dockerMachinePath = ref "docker-machine"

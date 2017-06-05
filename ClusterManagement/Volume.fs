@@ -128,18 +128,14 @@ module Volume =
             |> Proc.startAndAwait
 
         try
-            let! parsed =
-                DockerWrapper.inspect containerId
-                |> DockerMachine.runSudoDockerOnNode cluster node
-                |> Proc.startAndAwait
+            // Use docker-exec and tar
+            let makeRemote (proc:CreateProcess<_>) =
+                proc
+                |> DockerWrapper.exec containerId
+                |> Sudo.wrapCommand
+                |> DockerMachine.sshExt cluster node
 
-            // find the mountpoint of the docker volume
-            match parsed.Mounts |> List.filter (fun m -> m.Driver = Some volInfo.Driver && m.Name = Some volName) with
-            | [ mount ] ->
-                let flockerDir = mount.Source
-                do! DockerMachine.copyContents fileName direction cluster node targetDir flockerDir
-            | _ -> failwithf "expected our dummy container to have exactly one mount, but has %A" parsed.Mounts
-
+            do! DockerMachine.copyContentsExt None makeRemote fileName direction targetDir "/backup"
         finally
             DockerWrapper.remove true containerId
             |> DockerMachine.runSudoDockerOnNode cluster node
