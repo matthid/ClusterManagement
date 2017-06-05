@@ -162,11 +162,11 @@ let handleArgs (argv:string array) =
                             |> Seq.filter (fun c -> c.SecretAvailable && c.IsInitialized.IsSome && c.IsInitialized.Value)
                             |> Seq.map (fun c -> c.Name)
                             |> Seq.toList
-                    let formatPrint dataset name cluster =
-                        printfn "%20s | %20s | %20s" dataset name cluster
-                    let formatPrintT dataset name cluster =
-                        formatPrint dataset name cluster
-                    formatPrint "NAME" "SIMPLENAME" "CLUSTER"
+                    let formatPrint dataset name cluster driver =
+                        printfn "%40s | %20s | %20s | %10s" dataset name cluster driver
+                    let formatPrintT dataset name cluster driver =
+                        formatPrint dataset name cluster driver
+                    formatPrint "NAME" "SIMPLENAME" "CLUSTER" "DRIVER"
                     for c in clusters do
                         Storage.openClusterWithStoredSecret c
                         let volumes =
@@ -177,7 +177,7 @@ let handleArgs (argv:string array) =
                                 match vol.ClusterInfo with
                                 | Some ci -> ci.Cluster
                                 | None -> "<NONE>"
-                            formatPrintT vol.Info.Name vol.SimpleName cl
+                            formatPrintT vol.Info.Name vol.SimpleName cl vol.Info.Driver
                         Storage.closeClusterWithStoredSecret c
                     0
                 | Some (VolumeArgs.Create createArgs) ->
