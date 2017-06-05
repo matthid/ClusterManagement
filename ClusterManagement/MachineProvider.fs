@@ -62,7 +62,7 @@ module HostInteraction =
 
         // rexray docker plugin
         do!
-            (sprintf "plugin install %s:%s EBS_ACCESSKEY=%s EBS_SECRETKEY=%s EBS_REGION=%s"
+            (sprintf "plugin install --grant-all-permissions %s:%s EBS_ACCESSKEY=%s EBS_SECRETKEY=%s EBS_REGION=%s"
                 DockerImages.rexrayDockerPlugin DockerImages.rexrayTag keyId secret region)
             |> Arguments.OfWindowsCommandLine
             |> DockerWrapper.createProcess

@@ -163,7 +163,7 @@ let handleArgs (argv:string array) =
                             |> Seq.map (fun c -> c.Name)
                             |> Seq.toList
                     let formatPrint dataset name cluster driver =
-                        printfn "%40s | %20s | %20s | %10s" dataset name cluster driver
+                        printfn "%30s | %25s | %15s | %10s" dataset name cluster driver
                     let formatPrintT dataset name cluster driver =
                         formatPrint dataset name cluster driver
                     formatPrint "NAME" "SIMPLENAME" "CLUSTER" "DRIVER"
