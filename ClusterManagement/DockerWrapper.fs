@@ -1,11 +1,8 @@
 ﻿namespace ClusterManagement
 
 module DockerImages =
-    let flockerTag = "1.14.0"
-    let flockerControlService = "clusterhq/flocker-control-service"
-    let flockerDatasetAgent = "clusterhq/flocker-dataset-agent"
-    let flockerDockerPlugin = "clusterhq/flocker-dockerplugin"
-    let flockerCtl = "clusterhq/uft"
+    let rexrayTag = "0.9.0"
+    let rexrayDockerPlugin = "rexray/ebs"
     let clusterManagementName, clusterManagementTag, clusterManagement =
         let clusterManagementName = "matthid/clustermanagement"
         let assembly = System.Reflection.Assembly.GetExecutingAssembly()
@@ -169,31 +166,6 @@ module DockerWrapper =
         else
             path
 
-
-    let flockerca flockercerts args =
-        let path = System.IO.Path.GetFullPath (flockercerts)
-        sprintf "run --rm -v \"%O:/flockercerts\" hugecannon/flocker-cli %s" (mapHostDir path) args
-        |> Arguments.OfWindowsCommandLine
-        |> createProcess
-        |> CreateProcess.redirectOutput
-        |> CreateProcess.map (fun output -> output.Output)
-
-    let flockerctl args =
-        sprintf "run --net=host --rm -e FLOCKER_CERTS_PATH=\"/etc/flocker\" -e FLOCKER_USER=\"flockerctl\" -e FLOCKER_CONTROL_SERVICE=\"${CLUSTER_NAME}-01\" -e CONTAINERIZED=1 -v /:/host -v $PWD:/pwd:z clusterhq/uft:latest flockerctl %s" args
-        |> Arguments.OfWindowsCommandLine
-        |> createProcess
-        |> Bash.wrapToEvaluateArguments // for $PWD and ${CLUSTER_NAME}
-        |> CreateProcess.redirectOutput
-        |> CreateProcess.map (fun output -> output.Output)
-
-    //let getNodes () =
-    //  async {
-    //    let! res = flockerctl "list-nodes"
-    //    // node_hash=`echo $res | grep 127.0.0.1 | cut -d " " -f 1`
-    //
-    //    ()
-    //  }
-
     type DockerServiceReplicas = { Current : int; Requested : int}
     type DockerService =
         { Id : string; Name : string; Mode : string; Replicas : DockerServiceReplicas; Image : string }
@@ -328,6 +300,41 @@ module DockerWrapper =
         |> CreateProcess.redirectOutput
         |> CreateProcess.ensureExitCode
         |> CreateProcess.map (fun o -> VolumeInspect.getVolumeInspectJson o.Output)
+
+    type DockerVolume =
+        { Driver : string; Name : string }
+    let parseVolumes (out:string) =
+        let splitLine (line:string) =
+            let (s:string array) = line.Split ([|' '; '\t'|], System.StringSplitOptions.RemoveEmptyEntries)
+            assert (s.Length = 2)
+            if s.Length <> 2 then
+                if s.Length > 2
+                then eprintfn "Could not parse output line from 'docker volume ls': %s" line
+                else failwithf "Could not parse output line from 'docker volume ls': %s" line
+            { Driver = s.[0]; Name = s.[1] }
+
+        out.Split([| '\r'; '\n' |], System.StringSplitOptions.RemoveEmptyEntries)
+        |> Seq.skip 1
+        |> Seq.map splitLine
+        |> Seq.toList
+
+    let listVolumes () =
+        createProcess ([|"volume"; "ls"|] |> Arguments.OfArgs)
+        |> CreateProcess.redirectOutput
+        |> CreateProcess.ensureExitCode
+        |> CreateProcess.map (fun o -> parseVolumes o.Output)
+
+    let removeVolume volume =
+        createProcess ([|"volume"; "rm"; volume|] |> Arguments.OfArgs)
+        |> CreateProcess.redirectOutput
+        |> CreateProcess.ensureExitCode
+        
+    let createVolume volume driver options =
+        let args1 = ["volume"; "create"; sprintf "--name=%s" volume; sprintf "--diver=%s" driver ]
+        let args2 = options |> Seq.map (fun (name, value) -> sprintf "--opt=%s=%s" name value) |> Seq.toList
+        createProcess (args1 @ args2 |> List.toArray |> Arguments.OfArgs)
+        |> CreateProcess.redirectOutput
+        |> CreateProcess.ensureExitCode
 
     let removeService service =
         createProcess ([|"service"; "rm"; service|] |> Arguments.OfArgs)

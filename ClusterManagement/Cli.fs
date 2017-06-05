@@ -89,12 +89,14 @@ type VolumeCreateArgs =
     | [<Mandatory>] [<AltCommandLine("-c")>] Cluster of string
     | Size of int64
     | [<Mandatory>] [<AltCommandLine("-n")>] Name of string
+    | [<AltCommandLine("-g")>] Global
   with
     interface IArgParserTemplate with
         member this.Usage =
             match this with
             | Cluster _ -> "The name of the cluster to create the volume for."
             | Size _ -> "The size of the new Volume in bytes. Defaults to 1G (1024 * 1024 * 1024)"
+            | Global -> "Global -> Volume is not associated with any cluster and will not be deleted with the cluster."
             | Name _ -> "The name of the new Volume."
 
 type VolumeDeleteArgs =

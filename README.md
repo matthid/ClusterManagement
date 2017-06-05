@@ -131,7 +131,7 @@ This command can be used for a lot of scenarios:
 ## Technical details
 
 ClusterManagement is basically a wrapper around `docker` and `docker-machine`.
-It understands and manages [docker-swarm](https://www.docker.com/products/docker-swarm), [flocker](https://clusterhq.com/flocker/introduction/), [vault](https://www.vaultproject.io/) and [consul](https://www.consul.io/).
+It understands and manages [docker-swarm](https://www.docker.com/products/docker-swarm), [rexray](https://github.com/codedellemc/rexray), [vault](https://www.vaultproject.io/) and [consul](https://www.consul.io/).
 
 ClusterManagement will manage two folders in your "./clustercgf" folder.
  * .cm
@@ -140,3 +140,21 @@ ClusterManagement will manage two folders in your "./clustercgf" folder.
    This contains local-only files which should NOT be added to your repository (use git-ignore files to ignore it.).
    For example your cluster-secrets will be saved in this folder.
    
+## Flocker migration / running instance
+
+first install rexray plugin on all nodes
+
+ `docker plugin install rexray/ebs EBS_ACCESSKEY=<> EBS_SECRETKEY=<> EBS_REGION=<>`
+
+get info about your current volumes
+
+ `cm volume list`
+
+rename the `Name` tag in the aws console to something more meaningful, but use a different name than what `cm volume list` shows in `name=`.
+if you prefix the name with "<clustername>_" the volume will be managed by clustermanagement and deleted when the cluster is destroyed.
+
+upgrade `clustermanagement`
+update your deployment scripts to use the new name.
+re-reploy your services.
+
+New deployments automatically use rexray.

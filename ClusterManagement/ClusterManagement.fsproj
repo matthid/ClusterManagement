@@ -81,7 +81,6 @@
     <None Include="paket.references" />
     <None Include="cm-config.yml" />
     <None Include="cluster-config.yml" />
-    <EmbeddedResource Include="agent.yml" />
     <None Include="service-inspect-example.json" />
     <None Include="network-inspect-example.json" />
     <None Include="volume-inspect-example.json" />

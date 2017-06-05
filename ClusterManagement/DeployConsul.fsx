@@ -36,14 +36,14 @@ for service in services |> Seq.filter (fun s -> s.Name.StartsWith("consul")) do
 
 
 for master in [ 1 .. masterNum ] do
-    let volName = sprintf "%s-consul-master-%02d" d.ClusterName master
     // CM docker-machine -c <cluster> -- ssh blub-master-01 ifconfig -> get docker0 ip
-    Volume.create d.ClusterName volName (1024L * 1024L * 1024L) // 1 GB
-    |> Async.RunSynchronously
+    let volInfo =
+        Volume.create false d.ClusterName (sprintf "consul-master-%02d" master) (1024L * 1024L * 1024L) // 1 GB
+        |> Async.RunSynchronously
     if master = 1 then
         runDocker
-            (sprintf "service create --name consul-master-%02d --mount type=volume,src=%s,dst=/consul/data,volume-driver=flocker --network swarm-net --constraint node.role==manager -e \"CONSUL_BIND_INTERFACE=eth0\" -e \"CONSUL_LOCAL_CONFIG={\\\"skip_leave_on_interrupt\\\":true}\" consul agent -server -bootstrap-expect=%d -client=0.0.0.0 -retry-interval 5s"
-                master volName masterNum)
+            (sprintf "service create --name consul-master-%02d --mount type=volume,src=%s,dst=/consul/data,volume-driver=%s --network swarm-net --constraint node.role==manager -e \"CONSUL_BIND_INTERFACE=eth0\" -e \"CONSUL_LOCAL_CONFIG={\\\"skip_leave_on_interrupt\\\":true}\" consul agent -server -bootstrap-expect=%d -client=0.0.0.0 -retry-interval 5s"
+                master volInfo.Info.Name volInfo.Info.Driver masterNum)
             |> Proc.ensureExitCodeGetResult
             |> ignore
         // for the first node we assert if the ip is correct
@@ -52,8 +52,8 @@ for master in [ 1 .. masterNum ] do
         if ip.Addr <> "10.0.0.2" then failwithf "expected ip 10.0.0.2, but was %s" ip.Addr
     else
         runDocker
-            (sprintf "service create --name consul-master-%02d --mount type=volume,src=%s,dst=/consul/data,volume-driver=flocker --network swarm-net --constraint node.role==manager -e \"CONSUL_BIND_INTERFACE=eth0\" -e \"CONSUL_LOCAL_CONFIG={\\\"skip_leave_on_interrupt\\\":true}\" consul agent -server -retry-join=10.0.0.3 -bootstrap-expect=%d -client=0.0.0.0 -retry-interval 5s"
-                master volName masterNum)
+            (sprintf "service create --name consul-master-%02d --mount type=volume,src=%s,dst=/consul/data,volume-driver=%s --network swarm-net --constraint node.role==manager -e \"CONSUL_BIND_INTERFACE=eth0\" -e \"CONSUL_LOCAL_CONFIG={\\\"skip_leave_on_interrupt\\\":true}\" consul agent -server -retry-join=10.0.0.3 -bootstrap-expect=%d -client=0.0.0.0 -retry-interval 5s"
+                master volInfo.Info.Name volInfo.Info.Driver masterNum)
             |> Proc.ensureExitCodeGetResult
             |> ignore
 

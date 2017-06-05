@@ -162,31 +162,37 @@ let handleArgs (argv:string array) =
                             |> Seq.filter (fun c -> c.SecretAvailable && c.IsInitialized.IsSome && c.IsInitialized.Value)
                             |> Seq.map (fun c -> c.Name)
                             |> Seq.toList
-                    let formatPrint dataset name size cluster =
-                        printfn "%20s | %20s | %7s | %10s | %20s" dataset name size cluster
-                    let formatPrintT dataset name size cluster =
-                        formatPrint dataset name size cluster
-                    formatPrint "DATASET" "NAME" "SIZE" "STATUS" "CLUSTER"
+                    let formatPrint dataset name cluster =
+                        printfn "%20s | %20s | %20s" dataset name cluster
+                    let formatPrintT dataset name cluster =
+                        formatPrint dataset name cluster
+                    formatPrint "NAME" "SIMPLENAME" "CLUSTER"
                     for c in clusters do
                         Storage.openClusterWithStoredSecret c
                         let volumes =
                             Volume.list c
                             |> Async.RunSynchronously
                         for vol in volumes do
-                            formatPrintT vol.Dataset vol.Metadata vol.Size vol.Status c
+                            let cl =
+                                match vol.ClusterInfo with
+                                | Some ci -> ci.Cluster
+                                | None -> "<NONE>"
+                            formatPrintT vol.Info.Name vol.SimpleName cl
                         Storage.closeClusterWithStoredSecret c
                     0
                 | Some (VolumeArgs.Create createArgs) ->
                     let clusterName = createArgs.GetResult <@ VolumeCreateArgs.Cluster @>
                     let name = createArgs.GetResult <@ VolumeCreateArgs.Name @>
+                    let isGlobal = createArgs.Contains <@ VolumeCreateArgs.Global @>
                     let size =
                         match createArgs.TryGetResult <@ VolumeCreateArgs.Size @> with
                         | Some s -> s
                         | None -> 1024L * 1024L * 1024L
 
                     Storage.openClusterWithStoredSecret clusterName
-                    Volume.create clusterName name size
+                    Volume.create isGlobal clusterName name size
                     |> Async.RunSynchronously
+                    |> ignore
                     Storage.closeClusterWithStoredSecret clusterName
 
                     0
@@ -229,8 +235,9 @@ let handleArgs (argv:string array) =
                     let name = deleteArgs.GetResult <@ VolumeDeleteArgs.Name @>
 
                     Storage.openClusterWithStoredSecret clusterName
-                    Volume.destroy clusterName name
+                    Volume.remove clusterName name
                     |> Async.RunSynchronously
+                    |> ignore
                     Storage.closeClusterWithStoredSecret clusterName
 
                     0

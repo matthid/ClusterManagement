@@ -63,13 +63,6 @@ module CloudProviders =
             ()
       }
 
-    let getAgentConfig clusterName clusterConfig =
-        let tokens = Config.getTokens clusterName clusterConfig
-        let getReplacedResourceText name =
-            let resourceText = IO.getResourceText name
-            Config.replaceTokens tokens resourceText
-        getReplacedResourceText "agent.yml"
-
     (*docker run \
 --env AWS_ACCESS_KEY_ID=<<YOUR_ACCESS_KEY>> \
 --env AWS_SECRET_ACCESS_KEY=<<YOUR_SECRET_ACCESS>> \

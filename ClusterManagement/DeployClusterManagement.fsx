@@ -15,15 +15,14 @@ let runDockerE node cmd =
     |> runDockerRaw node
 let runDocker cmd = runDockerE "master-01" cmd
 
-let volName = sprintf "%s-clustermanagement" d.ClusterName
-
 // Stop existing service
 runDocker "service rm clustermanagement"
     |> ignore
 
 // CM docker-machine -c <cluster> -- ssh blub-master-01 ifconfig -> get docker0 ip
-Volume.create d.ClusterName volName (1024L * 1024L * 1024L) // 1 GB
-|> Async.RunSynchronously
+let volInfo =
+    Volume.create false d.ClusterName "clustermanagement" (1024L * 1024L * 1024L) // 1 GB
+    |> Async.RunSynchronously
 
 // upload config to the volume
 let tmpPath = System.IO.Path.GetTempFileName()
@@ -40,13 +39,13 @@ try
     let source = StoragePath.getConfigFilesDir d.ClusterName
     let target = System.IO.Path.Combine(tmpPath, StoragePath.configFilesDirName)
     IO.cp { IO.CopyOptions.Default with DoOverwrite = true; IsRecursive = true } source target
-    Volume.copyContents "." CopyDirection.Upload d.ClusterName volName tmpPath
+    Volume.copyContents "." CopyDirection.Upload d.ClusterName volInfo.Info.Name tmpPath
         |> Async.RunSynchronously
 finally
     System.IO.Directory.Delete(tmpPath, true)
 
 runDocker
-    (sprintf "service create --replicas 1 --name clustermanagement --mount type=volume,src=%s,dst=/workdir,volume-driver=flocker --network swarm-net matthid/clustermanagement internal serveconfig"
-        volName)
+    (sprintf "service create --replicas 1 --name clustermanagement --mount type=volume,src=%s,dst=/workdir,volume-driver=%s --network swarm-net matthid/clustermanagement internal serveconfig"
+        volInfo.Info.Name volInfo.Info.Driver)
     |> ignore
 
