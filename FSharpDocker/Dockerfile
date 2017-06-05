@@ -7,6 +7,7 @@ ENV MONO_THREADS_PER_CPU 50
 RUN MONO_VERSION=5.0.1 && \
 	DOCKER_CHANNEL=edge \
 	DOCKER_VERSION=17.05.0-ce \
+	DOCKER_MACHINE_VERSION=v0.11.0 \
     FSHARP_VERSION=4.1.18 && \
     FSHARP_PREFIX=/usr && \
     FSHARP_GACDIR=/usr/lib/mono/gac && \
@@ -34,7 +35,7 @@ RUN MONO_VERSION=5.0.1 && \
 	tar --extract --file docker.tgz --strip-components 1 --directory /usr/local/bin/ && \
 	rm docker.tgz && \
 	# Install docker-machine
-    curl -L https://github.com/docker/machine/releases/download/v0.9.0-rc2/docker-machine-`uname -s`-`uname -m` >/tmp/docker-machine && \
+    curl -L https://github.com/docker/machine/releases/download/${DOCKER_MACHINE_VERSION}/docker-machine-`uname -s`-`uname -m` >/tmp/docker-machine && \
     chmod +x /tmp/docker-machine && \
     sudo cp /tmp/docker-machine /usr/local/bin/docker-machine && \
     rm -rf /tmp/src /tmp/NuGetScratch ~/.nuget ~/.config ~/.local && \
