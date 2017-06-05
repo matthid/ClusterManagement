@@ -60,10 +60,52 @@ module HostInteraction =
         let secret = forceConfig "AWS_ACCESS_KEY_SECRET"
         let region = forceConfig "AWS_REGION"
 
-        // rexray docker plugin
+        let! (result : ProcessResults<unit>) =
+            (sprintf "plugin inspect %s " DockerImages.rexrayDockerPlugin)
+            |> Arguments.OfWindowsCommandLine
+            |> DockerWrapper.createProcess
+            |> Proc.startRaw
+        if result.ExitCode = 0 then
+            // exists -> disable and set EBS_ACCESSKEY=%s EBS_SECRETKEY=%s EBS_REGION=%s
+            do!
+                (sprintf "plugin disable --force %s" DockerImages.rexrayDockerPlugin)
+                |> Arguments.OfWindowsCommandLine
+                |> DockerWrapper.createProcess
+                |> CreateProcess.ensureExitCode
+                |> Proc.startAndAwait
+                |> Async.Ignore
+            do!
+                (sprintf "plugin set %s EBS_ACCESSKEY=%s EBS_SECRETKEY=%s EBS_REGION=%s"
+                    DockerImages.rexrayDockerPlugin keyId secret region)
+                |> Arguments.OfWindowsCommandLine
+                |> DockerWrapper.createProcess
+                |> CreateProcess.ensureExitCode
+                |> Proc.startAndAwait
+                |> Async.Ignore
+        else 
+            // Install rexray docker plugin
+            do!
+                (sprintf "plugin install --disable --grant-all-permissions %s EBS_ACCESSKEY=%s EBS_SECRETKEY=%s EBS_REGION=%s"
+                    DockerImages.rexrayDockerPlugin keyId secret region)
+                |> Arguments.OfWindowsCommandLine
+                |> DockerWrapper.createProcess
+                |> CreateProcess.ensureExitCode
+                |> Proc.startAndAwait
+                |> Async.Ignore
+        
+        // sudo docker plugin upgrade --skip-remote-check --grant-all-permissions rexray/ebs:0.9.0 rexray/ebs:0.8.2
+        //
         do!
-            (sprintf "plugin install --grant-all-permissions %s:%s EBS_ACCESSKEY=%s EBS_SECRETKEY=%s EBS_REGION=%s"
-                DockerImages.rexrayDockerPlugin DockerImages.rexrayTag keyId secret region)
+            (sprintf "plugin upgrade --skip-remote-check --grant-all-permissions %s %s:%s"
+                DockerImages.rexrayDockerPlugin DockerImages.rexrayDockerPlugin DockerImages.rexrayTag)
+            |> Arguments.OfWindowsCommandLine
+            |> DockerWrapper.createProcess
+            |> CreateProcess.ensureExitCode
+            |> Proc.startAndAwait
+            |> Async.Ignore
+            
+        do!
+            (sprintf "plugin enable %s" DockerImages.rexrayDockerPlugin)
             |> Arguments.OfWindowsCommandLine
             |> DockerWrapper.createProcess
             |> CreateProcess.ensureExitCode
