@@ -222,7 +222,7 @@ let handleArgs (argv:string array) =
                         | None -> "."
 
                     Storage.openClusterWithStoredSecret clusterName
-                    Volume.copyContents fileName CopyDirection.Upload clusterName name localFolder
+                    Volume.copyContents fileName CopyDirection.Download clusterName name localFolder
                     |> Async.RunSynchronously
 
                     Storage.closeClusterWithStoredSecret clusterName

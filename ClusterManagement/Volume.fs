@@ -115,6 +115,7 @@ module Volume =
             DockerWrapper.inspectVolume volName
             |> DockerMachine.runSudoDockerOnNode cluster node
             |> Proc.startAndAwait
+        // TODO: resolve volName if not exist -> fullname
         let! containerId =
             DockerWrapper.createProcess
                 (sprintf "run -d --rm --volume-driver %s -v %s:/backup --name backup-volume-helper --net swarm-net -e NOSTART=true --entrypoint /sbin/my_init phusion/baseimage"
