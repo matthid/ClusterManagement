@@ -330,7 +330,7 @@ module DockerWrapper =
         |> CreateProcess.ensureExitCode
         
     let createVolume volume driver options =
-        let args1 = ["volume"; "create"; sprintf "--name=%s" volume; sprintf "--diver=%s" driver ]
+        let args1 = ["volume"; "create"; sprintf "--name=%s" volume; sprintf "--driver=%s" driver ]
         let args2 = options |> Seq.map (fun (name, value) -> sprintf "--opt=%s=%s" name value) |> Seq.toList
         createProcess (args1 @ args2 |> List.toArray |> Arguments.OfArgs)
         |> CreateProcess.redirectOutput

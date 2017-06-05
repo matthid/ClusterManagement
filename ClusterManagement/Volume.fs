@@ -50,7 +50,18 @@ module Volume =
     
     let findVolumeFrom cluster name vols =
         let fullName = createFullName cluster name
-        vols |> Seq.tryFind (fun v -> v.Info.Name = fullName || match v.ClusterInfo with Some s -> s.Cluster = cluster && s.SimpleName = name | _ -> false)
+        let globalMatch =
+            vols |> Seq.tryFind (fun v -> v.Info.Name = fullName)
+        let clusterMatch = 
+            vols 
+            |> Seq.tryFind(fun v -> match v.ClusterInfo with Some s -> s.Cluster = cluster && s.SimpleName = name | _ -> false)
+        match globalMatch, clusterMatch with
+        | Some g, Some l ->
+            eprintfn "Cluster and global volume match name '%s', took the global one (use the full name for the cluster one). Don't do this!" name
+            Some g
+        | Some g, _ -> Some g
+        | _, Some l -> Some l
+        | _ -> None
       
     let findVolume cluster name =
       async {
