@@ -49,9 +49,9 @@ module Volume =
       }
     
     let findVolumeFrom cluster name vols =
-        let fullName = createFullName cluster name
+        //let fullName = createFullName cluster name
         let globalMatch =
-            vols |> Seq.tryFind (fun v -> v.Info.Name = fullName)
+            vols |> Seq.tryFind (fun v -> v.Info.Name = name)
         let clusterMatch = 
             vols 
             |> Seq.tryFind(fun v -> match v.ClusterInfo with Some s -> s.Cluster = cluster && s.SimpleName = name | _ -> false)

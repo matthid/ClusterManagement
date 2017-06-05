@@ -346,7 +346,7 @@ module DockerWrapper =
             | ShellCommand s -> s
             | RawCommand (f, arg) -> sprintf "%s %s" f arg.ToWindowsCommandLine
             |> Arguments.OfWindowsCommandLine
-        createProcess ([| yield! ["exec"; containerId ]; yield! cmdLine.Args |] |> Arguments.OfArgs)
+        createProcess ([| yield! ["exec"; "-i"; containerId ]; yield! cmdLine.Args |] |> Arguments.OfArgs)
         |> CreateProcess.withResultFunc proc.GetResult
         |> CreateProcess.addSetup proc.Setup
         |> fun c -> match proc.Environment with | Some env -> c |> CreateProcess.withEnvironment env | None -> c
