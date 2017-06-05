@@ -132,8 +132,9 @@ module Volume =
             let makeRemote (proc:CreateProcess<_>) =
                 proc
                 |> DockerWrapper.exec containerId
-                |> Sudo.wrapCommand
-                |> DockerMachine.sshExt cluster node
+                |> DockerMachine.runSudoDockerOnNode cluster node
+                //|> Sudo.wrapCommand
+                //|> DockerMachine.sshExt cluster node
 
             do! DockerMachine.copyContentsExt None makeRemote fileName direction targetDir "/backup"
         finally
