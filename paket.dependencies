@@ -1,3 +1,4 @@
+version 5.0.0
 source https://nuget.org/api/v2
 
 framework: net461

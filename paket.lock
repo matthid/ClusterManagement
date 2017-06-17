@@ -8,7 +8,7 @@ NUGET
       System.Reflection.Metadata (>= 1.4.2)
     FSharp.Compiler.Tools (4.1.17)
     FSharp.Configuration (1.2)
-    FSharp.Core (4.2)
+    FSharp.Core (4.2.1)
     FSharp.Data (2.3.3)
     Mono.Posix (4.0)
     NUnit (3.7)
