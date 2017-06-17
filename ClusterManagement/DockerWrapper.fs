@@ -168,13 +168,13 @@ module DockerWrapper =
 
     type DockerServiceReplicas = { Current : int; Requested : int}
     type DockerService =
-        { Id : string; Name : string; Mode : string; Replicas : DockerServiceReplicas; Image : string }
+        { Id : string; Name : string; Mode : string; Replicas : DockerServiceReplicas; Image : string; Ports : string option }
     let parseServices (out:string) =
         let splitLine (line:string) =
             let (s:string array) = line.Split ([|' '; '\t'|], System.StringSplitOptions.RemoveEmptyEntries)
-            assert (s.Length = 5)
-            if s.Length <> 5 then
-                if s.Length > 5
+            assert (s.Length = 5 || s.Length = 6)
+            if s.Length <> 5 && s.Length <> 6 then
+                if s.Length > 6
                     then eprintfn "Could not parse output line from 'docker service ls': %s" line
                     else failwithf "Could not parse output line from 'docker service ls': %s" line
             let (rep:string array) = s.[3].Split([|'/'|])
@@ -190,7 +190,7 @@ module DockerWrapper =
                 match System.Int32.TryParse(rep.[1]) with
                 | true, i -> i
                 | _ -> failwithf "Could not parse output line (maxRep) from 'docker service ls': %s" line
-            { Id = s.[0]; Name = s.[1]; Mode = s.[2]; Replicas = { Current = currentRep; Requested = maxRep }; Image = s.[4] }
+            { Id = s.[0]; Name = s.[1]; Mode = s.[2]; Replicas = { Current = currentRep; Requested = maxRep }; Image = s.[4]; Ports = if s.Length > 5 then Some s.[5] else None }
 
         out.Split([| '\r'; '\n' |], System.StringSplitOptions.RemoveEmptyEntries)
         |> Seq.skip 1

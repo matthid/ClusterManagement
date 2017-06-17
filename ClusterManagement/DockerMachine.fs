@@ -144,7 +144,11 @@ module DockerMachine =
         |> runSudoDockerOnNode cluster nodeName
 
     let remove force cluster machineName =
-        createProcess cluster ([| yield "rm"; if force then yield "-f"; yield "-y"; yield machineName |] |> Arguments.OfArgs)
+        createProcess cluster
+            ([| yield "rm"
+                if force then yield "-f"
+                yield "-y";
+                yield machineName |] |> Arguments.OfArgs)
 
     let copyContentsExt makeLocal makeRemote fileName direction localDir remoteDir  =
       async {
@@ -152,7 +156,7 @@ module DockerMachine =
             match makeLocal with
             | Some f -> false, f
             | None -> true, id
-        
+
         match direction with
         | Download ->
             if isRealLocal then
