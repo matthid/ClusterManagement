@@ -1,8 +1,14 @@
 ﻿namespace ClusterManagement
 
 module DockerImages =
-    let rexrayTag = "0.9.0"
-    let rexrayDockerPlugin = "rexray/ebs"
+    type RexrayPlugins =
+        { PluginName : string; ImageName : string; Tag : string }
+    let rexrayPlugins =
+        [ { PluginName = "ebs"; ImageName = "rexray/ebs"; Tag = "0.9.0" }
+          { PluginName = "s3fs"; ImageName = "rexray/s3fs"; Tag = "0.9.0" } ]
+        |> Seq.map (fun p -> p.PluginName, p)
+        |> dict
+
     let clusterManagementName, clusterManagementTag, clusterManagement =
         let clusterManagementName = "matthid/clustermanagement"
         let assembly = System.Reflection.Assembly.GetExecutingAssembly()
@@ -328,7 +334,7 @@ module DockerWrapper =
         createProcess ([|"volume"; "rm"; volume|] |> Arguments.OfArgs)
         |> CreateProcess.redirectOutput
         |> CreateProcess.ensureExitCode
-        
+
     let createVolume volume driver options =
         let args1 = ["volume"; "create"; sprintf "--name=%s" volume; sprintf "--driver=%s" driver ]
         let args2 = options |> Seq.map (fun (name, value) -> sprintf "--opt=%s=%s" name value) |> Seq.toList
@@ -339,7 +345,7 @@ module DockerWrapper =
     let removeService service =
         createProcess ([|"service"; "rm"; service|] |> Arguments.OfArgs)
         //|> CreateProcess.ensureExitCode
-        
+
     let exec containerId (proc:CreateProcess<_>) =
         let cmdLine =
             match proc.Command with

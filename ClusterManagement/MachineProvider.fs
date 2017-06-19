@@ -47,65 +47,87 @@ module HostInteraction =
         | Some h ->
             h
 
-    let installRexRayPlugin (c:ClusterConfig.MyClusterConfig) (nodeName:string) nodeType =
+    let rexraySettingsMap =
+        [ "ebs", ["AWS_ACCESS_KEY_ID", "EBS_ACCESSKEY"
+                  "AWS_ACCESS_KEY_SECRET", "EBS_SECRETKEY"
+                  "AWS_REGION", "EBS_REGION"]
+          "s3fs", ["AWS_ACCESS_KEY_ID", "S3FS_ACCESSKEY"
+                   "AWS_ACCESS_KEY_SECRET", "S3FS_SECRETKEY"
+                   "AWS_REGION", "S3S_REGION"] ]
+        |> dict
+
+    let installRexRayPlugin plugin (c:ClusterConfig.MyClusterConfig) (nodeName:string) nodeType =
       async {
         if Env.isVerbose then printfn "installing and starting rexray services."
-        
+
         let forceConfig name =
             match ClusterConfig.getConfig name c with
             | Some va -> va
             | None -> failwithf "Expected config %s" name
 
-        let keyId = forceConfig "AWS_ACCESS_KEY_ID"
-        let secret = forceConfig "AWS_ACCESS_KEY_SECRET"
-        let region = forceConfig "AWS_REGION"
+        let settings =
+            match rexraySettingsMap.TryGetValue plugin with
+            | true, set -> set
+            | _ -> failwithf "Unknown plugin '%s'" plugin
+        //let keyId = forceConfig "AWS_ACCESS_KEY_ID"
+        //let secret = forceConfig "AWS_ACCESS_KEY_SECRET"
+        //let region = forceConfig "AWS_REGION"
+        let settingsCmdLine =
+            settings
+            |> Seq.map fst
+            |> Seq.map (fun set -> sprintf "%s=%s" set (forceConfig set))
+            |> fun set -> System.String.Join(" ", set)
+        let pluginInfo =
+            match DockerImages.rexrayPlugins.TryGetValue plugin with
+            | true, plug -> plug
+            | _ -> failwithf "Unknown plugin (2) '%s'" plugin
 
         let! (result : ProcessResults<unit>) =
-            (sprintf "plugin inspect %s " DockerImages.rexrayDockerPlugin)
+            (sprintf "plugin inspect %s " pluginInfo.ImageName)
             |> Arguments.OfWindowsCommandLine
             |> DockerWrapper.createProcess
             |> Proc.startRaw
         if result.ExitCode = 0 then
             // exists -> disable and set EBS_ACCESSKEY=%s EBS_SECRETKEY=%s EBS_REGION=%s
             do!
-                (sprintf "plugin disable --force %s" DockerImages.rexrayDockerPlugin)
+                (sprintf "plugin disable --force %s" pluginInfo.ImageName)
                 |> Arguments.OfWindowsCommandLine
                 |> DockerWrapper.createProcess
                 |> CreateProcess.ensureExitCode
                 |> Proc.startAndAwait
                 |> Async.Ignore
             do!
-                (sprintf "plugin set %s EBS_ACCESSKEY=%s EBS_SECRETKEY=%s EBS_REGION=%s"
-                    DockerImages.rexrayDockerPlugin keyId secret region)
+                (sprintf "plugin set %s %s"
+                    pluginInfo.ImageName settingsCmdLine)
                 |> Arguments.OfWindowsCommandLine
                 |> DockerWrapper.createProcess
                 |> CreateProcess.ensureExitCode
                 |> Proc.startAndAwait
                 |> Async.Ignore
-        else 
+        else
             // Install rexray docker plugin
             do!
-                (sprintf "plugin install --disable --grant-all-permissions %s EBS_ACCESSKEY=%s EBS_SECRETKEY=%s EBS_REGION=%s"
-                    DockerImages.rexrayDockerPlugin keyId secret region)
+                (sprintf "plugin install --disable --grant-all-permissions %s %s"
+                    pluginInfo.ImageName settingsCmdLine)
                 |> Arguments.OfWindowsCommandLine
                 |> DockerWrapper.createProcess
                 |> CreateProcess.ensureExitCode
                 |> Proc.startAndAwait
                 |> Async.Ignore
-        
+
         // sudo docker plugin upgrade --skip-remote-check --grant-all-permissions rexray/ebs:0.9.0 rexray/ebs:0.8.2
         //
         do!
             (sprintf "plugin upgrade --skip-remote-check --grant-all-permissions %s %s:%s"
-                DockerImages.rexrayDockerPlugin DockerImages.rexrayDockerPlugin DockerImages.rexrayTag)
+                pluginInfo.ImageName pluginInfo.ImageName pluginInfo.Tag)
             |> Arguments.OfWindowsCommandLine
             |> DockerWrapper.createProcess
             |> CreateProcess.ensureExitCode
             |> Proc.startAndAwait
             |> Async.Ignore
-            
+
         do!
-            (sprintf "plugin enable %s" DockerImages.rexrayDockerPlugin)
+            (sprintf "plugin enable %s" pluginInfo.ImageName)
             |> Arguments.OfWindowsCommandLine
             |> DockerWrapper.createProcess
             |> CreateProcess.ensureExitCode

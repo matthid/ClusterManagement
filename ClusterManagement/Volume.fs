@@ -2,7 +2,7 @@
 
 module Volume =
     open System
-    
+
     type ClusterDockerInfo =
         { SimpleName : string; Cluster : string }
 
@@ -12,10 +12,9 @@ module Volume =
             match x.ClusterInfo with
             | Some c -> c.SimpleName
             | None -> x.Info.Name
-    
+
     let createFullName cluster (name:string) =
-        if name.Contains "_" then
-            failwith "Name cannot contain '_'"
+        Config.checkName name
         sprintf "%s_%s" cluster name
 
     let tryGetClusterInfo (fullName:string) =
@@ -29,7 +28,7 @@ module Volume =
 
     let list cluster =
       async {
-        let! res = 
+        let! res =
             DockerWrapper.listVolumes ()
             |> DockerMachine.runSudoDockerOnNode cluster "master-01"
             |> CreateProcess.map (List.map (fun rawInfo -> { Info = rawInfo; ClusterInfo = tryGetClusterInfo rawInfo.Name }))
@@ -37,23 +36,23 @@ module Volume =
         res |> Proc.ensureExitCodeGetResult |> ignore
         return res.Result
       }
- 
+
     let remove cluster volume =
       async {
-        let! res = 
+        let! res =
             DockerWrapper.removeVolume volume
             |> DockerMachine.runSudoDockerOnNode cluster "master-01"
             |> Proc.startRaw
         res |> Proc.ensureExitCodeGetResult |> ignore
         return res
       }
-    
+
     let findVolumeFrom cluster name vols =
         //let fullName = createFullName cluster name
         let globalMatch =
             vols |> Seq.tryFind (fun v -> v.Info.Name = name)
-        let clusterMatch = 
-            vols 
+        let clusterMatch =
+            vols
             |> Seq.tryFind(fun v -> match v.ClusterInfo with Some s -> s.Cluster = cluster && s.SimpleName = name | _ -> false)
         match globalMatch, clusterMatch with
         | Some g, Some l ->
@@ -62,7 +61,7 @@ module Volume =
         | Some g, _ -> Some g
         | _, Some l -> Some l
         | _ -> None
-      
+
     let findVolume cluster name =
       async {
         let! vols = list cluster
@@ -80,7 +79,7 @@ module Volume =
             eprintfn "Not creating volume '%s' as it already exists (name: %s, simplename: %s, driver: %s)." name v.Info.Name v.SimpleName v.Info.Driver
             return v
         | None ->
-            // docker volume create 
+            // docker volume create
             let sizeInGB = decimal size / 1000000000.0m
             let sizeInGB_rounded = size / 1000000000L
             if Math.Abs(decimal sizeInGB_rounded - sizeInGB) > 0.0005m then
@@ -88,7 +87,7 @@ module Volume =
             // docker volume create --driver=rexray/ebs --name=test123 --opt=size=0.5
             let fullName = createFullName cluster name
             let volname = if isGlobal then name else fullName
-            let! res = 
+            let! res =
                 DockerWrapper.createVolume volname "rexray/ebs" [("size", sprintf "%d" sizeInGB_rounded)]
                 |> DockerMachine.runSudoDockerOnNode cluster "master-01"
                 |> Proc.startRaw

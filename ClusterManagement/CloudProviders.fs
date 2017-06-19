@@ -105,3 +105,14 @@ aws <command> *)
         | Generic ->
             printfn "Make sure all machines can access each other via hostnames!"
       }
+
+
+    let provision config (nodeName:string) nodeType  =
+        async {
+            match getProvider config with
+            | AWS ->
+                do! HostInteraction.installRexRayPlugin "ebs" config nodeName nodeType
+            | Generic ->
+                ()
+                //do! HostInteraction.installRexRayPlugin "s3fs" config nodeName nodeType
+        }

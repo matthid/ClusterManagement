@@ -3,6 +3,12 @@ namespace ClusterManagement
 open System.IO
 
 module Config =
+    // restriction imposed by s3 bucket names.
+    let private validNameRegex = System.Text.RegularExpressions.Regex(@"^[a-z0-9][a-z0-9\-][a-z0-9\-]*[a-z0-9]$")
+    let checkName name =
+        if not (validNameRegex.IsMatch(name)) then
+            failwith "Name can only contain lower case letters and numbers [a-z0-9]"
+
     let getTokens clusterName cc =
         let rawTokens = ClusterConfig.getTokens cc
         Seq.append rawTokens [ { ClusterConfig.Token.Name = "CLUSTER_NAME"; Value = clusterName}]

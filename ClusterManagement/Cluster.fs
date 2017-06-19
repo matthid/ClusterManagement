@@ -59,14 +59,14 @@ module Cluster =
     open System.IO
     let createNewCluster force (clusterName:string) secret masterNodes masterAsWorker workerNodes =
       async {
-        if clusterName.Contains "_" then
-            failwith "Clustername cannot contain '_'"
         if Storage.isClusterAvailable clusterName then
             if not force then
                 failwithf "cluster '%s' is already created, use force! Note that force MIGH make previous flocker volumes INACCESSIBLE via clustermanagement!" clusterName
             else
                 eprintfn "Re-creating initial certificates. This action MIGHT make previous flocker volumes INACCESSIBLE via clustermanagement!"
             Storage.openClusterWithStoredSecret clusterName
+        else
+            Config.checkName clusterName
 
         for i in 1 .. masterNodes do
             let dir = StoragePath.getMasterNodeDir clusterName i
@@ -97,8 +97,8 @@ module Cluster =
         
         //do! HostInteraction.uninstallRexRayPlugin nodeName nodeType
         let config = ClusterConfig.readConfigFromFile "/host/yaaf-provision/cluster-config.yml"
-
-        do! HostInteraction.installRexRayPlugin config nodeName nodeType
+        
+        do! CloudProviders.provision config nodeName nodeType
 
         if Env.isVerbose then printfn "machine successfully provisioned."
 

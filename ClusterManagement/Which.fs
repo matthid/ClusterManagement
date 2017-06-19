@@ -8,7 +8,7 @@ module Which =
             if not (System.IO.File.Exists cygPath) then
                 failwithf "Please install git bash on default location for this program to work! ('%s' not found)" cygPath
 
-            let! result = 
+            let! result =
                 CreateProcess.fromRawCommand cygPath [| "-w"; fileName |]
                 |> CreateProcess.redirectOutput
                 |> CreateProcess.ensureExitCode
@@ -43,7 +43,7 @@ module Which =
             else toolPath
         if System.String.IsNullOrWhiteSpace toolPath then
             failwith "which returned an empty string"
-            
+
         let! resolvedToolPath = resolveCygwinPath toolPath
         return resolvedToolPath
       }
