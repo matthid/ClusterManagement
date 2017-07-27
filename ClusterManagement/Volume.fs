@@ -39,6 +39,8 @@ module Volume =
 
     let remove cluster volume =
       async {
+        async.Bind(async {return()} |> Async.StartAsTask, fun _ -> async { return () })
+            |> ignore
         let! res =
             DockerWrapper.removeVolume volume
             |> DockerMachine.runSudoDockerOnNode cluster "master-01"
@@ -81,7 +83,7 @@ module Volume =
         | None ->
             // docker volume create
             let sizeInGB = decimal size / 1000000000.0m
-            let sizeInGB_rounded = size / 1000000000L
+            let sizeInGB_rounded = Math.Max(1L, size / 1000000000L)
             if Math.Abs(decimal sizeInGB_rounded - sizeInGB) > 0.0005m then
                 eprintfn "rexray accepts only gb, therefore we rounded your value to '%d'gb. To get rid of this warning use a multiple of 1000000000" sizeInGB_rounded
             // docker volume create --driver=rexray/ebs --name=test123 --opt=size=0.5

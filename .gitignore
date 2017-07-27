@@ -6,6 +6,7 @@ __repository
 
 $tf/
 .fake/
+.idea/
 src/.vs
 
 # User-specific files

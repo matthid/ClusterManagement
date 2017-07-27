@@ -2,10 +2,10 @@
 
 module DockerImages =
     type RexrayPlugins =
-        { PluginName : string; ImageName : string; Tag : string }
+        { PluginName : string; ImageName : string; Tag : string; Driver : VolumeDriver }
     let rexrayPlugins =
-        [ { PluginName = "ebs"; ImageName = "rexray/ebs"; Tag = "0.9.0" }
-          { PluginName = "s3fs"; ImageName = "rexray/s3fs"; Tag = "0.9.0" } ]
+        [ { PluginName = "ebs"; ImageName = "rexray/ebs"; Tag = "0.9.0"; Driver = VolumeDriver.Ebs }
+          { PluginName = "s3fs"; ImageName = "rexray/s3fs"; Tag = "0.9.0"; Driver = VolumeDriver.S3fs } ]
         |> Seq.map (fun p -> p.PluginName, p)
         |> dict
 

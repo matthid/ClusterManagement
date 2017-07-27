@@ -1,4 +1,4 @@
-﻿namespace ClusterManagement
+namespace ClusterManagement
 
 module Env =
     let mutable isVerbose = false
@@ -10,4 +10,3 @@ module Env =
         (p = 4) || (p = 6) || (p = 128)
     let isMono =
         not (isNull <| System.Type.GetType ("Mono.Runtime"))
-    

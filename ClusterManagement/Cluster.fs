@@ -128,7 +128,7 @@ module Cluster =
         let nodeDir = StoragePath.getNodesDir clusterName
         let nodes = Storage.getNodes nodeDir
         let mutable primaryMasterIp = Unchecked.defaultof<_>
-        // Create Machine and initialize flocker
+        // Create Machine and initialize the clustermanagement subsystem
         for { Type = t; Dir = dir } in nodes |> Seq.sortBy (fun n -> match n.Type with | Storage.NodeType.PrimaryMaster -> 0 | Storage.NodeType.Master -> 1 | Storage.NodeType.Worker -> 2) do
             // create machine
             let nodeName = Storage.getNodeNameByDir dir

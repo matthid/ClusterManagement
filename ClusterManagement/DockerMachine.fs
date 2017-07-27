@@ -11,11 +11,14 @@ module DockerMachine =
     let getMachineName clusterName nodeName =
         sprintf "%s-%s" clusterName nodeName
 
-    let createProcess cluster args =
+    let createProcessRaw allowUnInitialized cluster args =
         let dockerMachineDir = StoragePath.getDockerMachineDir cluster
         DockerMachineWrapper.createProcess dockerMachineDir args
         |> CreateProcess.addSetup (fun () ->
             let c = ClusterConfig.readClusterConfig cluster
+            if not (ClusterConfig.getIsInitialized c) && not allowUnInitialized then
+                failwithf "Cannot run process for cluster '%s' when it is not initialized!" cluster
+
             let tokens = ClusterConfig.getTokens c
             let homeDir = System.Environment.GetFolderPath(System.Environment.SpecialFolder.UserProfile)
             let awsConfigDir = Path.Combine(homeDir, ".aws")
@@ -37,6 +40,7 @@ module DockerMachine =
                 member __.Dispose () = cleanup() }
             )
 
+    let createProcess cluster args = createProcessRaw false cluster args
     let ssh cluster nodeName command =
         let machineName = getMachineName cluster nodeName
         let args = command |> Arguments.OfWindowsCommandLine

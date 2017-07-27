@@ -53,13 +53,16 @@
     </Compile>
     <Compile Include="AssemblyInfo.fs" />
     <Compile Include="CustomAssemblyInfo.fs" />
+    <Compile Include="EnvDetection.fs" />
     <Compile Include="Event.fs" />
     <Compile Include="Async.fs" />
-    <Compile Include="Env.fs" />
+    <Compile Include="EnvDetection.fs" />
     <Compile Include="CmdLineParsing.fs" />
+    <Compile Include="RawProc.fs" />
     <Compile Include="IO.fs" />
     <Compile Include="Proc.fs" />
     <Compile Include="Bash.fs" />
+    <Compile Include="VolumeDriver.fs" />
     <Compile Include="DockerWrapper.fs" />
     <Compile Include="Which.fs" />
     <Compile Include="ZipFile.fs" />

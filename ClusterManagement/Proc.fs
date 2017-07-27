@@ -86,29 +86,6 @@ module StreamExtensions =
                 override __.Dispose(t) = if t then readStream.Dispose()
                 }
 
-type Command =
-    | ShellCommand of string
-    /// Windows: https://msdn.microsoft.com/en-us/library/windows/desktop/bb776391(v=vs.85).aspx
-    /// Linux(mono): https://github.com/mono/mono/blob/0bcbe39b148bb498742fc68416f8293ccd350fb6/eglib/src/gshell.c#L32-L104 (because we need to create a commandline string internally which need to go through that code)
-    /// Linux(netcore): See https://github.com/fsharp/FAKE/pull/1281/commits/285e585ec459ac7b89ca4897d1323c5a5b7e4558 and https://github.com/dotnet/corefx/blob/master/src/System.Diagnostics.Process/src/System/Diagnostics/Process.Unix.cs#L443-L522
-    | RawCommand of executable:FilePath * arguments:Arguments
-
-type DataRef<'T>=
-    internal { retrieveRaw : (unit -> 'T) ref }
-    static member Empty = { retrieveRaw = ref (fun _ -> invalidOp "Can retrieve only when a process has been started!") }
-    static member Map f (inner:DataRef<'T>) =
-        { retrieveRaw = ref (fun _ -> f inner.Value) }
-    member x.Value = (!x.retrieveRaw)()
-
-type StreamRef = DataRef<System.IO.Stream>
-//type DataRef =
-//    static member Empty<'T> = DataRef
-type StreamSpecification =
-    | Inherit
-    | UseStream of closeOnExit:bool * stream:System.IO.Stream
-    | CreatePipe of StreamRef // The underlying framework creates pipes already
-
-type ProcessOutput = { Output : string; Error : string }
 type IProcessHook =
     inherit System.IDisposable
     abstract member ProcessExited : int -> unit
@@ -117,60 +94,50 @@ type ResultGenerator<'TRes> =
     {   GetRawOutput : unit -> ProcessOutput
         GetResult : ProcessOutput -> 'TRes }
 type CreateProcess<'TRes> =
-    private {   
+    private {
         Command : Command
         WorkingDirectory : string option
         Environment : (string * string) list option
         StandardInput : StreamSpecification 
         StandardOutput : StreamSpecification 
         StandardError : StreamSpecification
-        Setup : unit -> IProcessHook
         GetRawOutput : (unit -> ProcessOutput) option
+        Setup : unit -> IProcessHook
         GetResult : ProcessOutput -> 'TRes
     }
+    member x.Proc =
+      { Command = x.Command
+        WorkingDirectory = x.WorkingDirectory
+        Environment = x.Environment
+        StandardInput = x.StandardInput
+        StandardOutput = x.StandardOutput
+        StandardError = x.StandardError
+        GetRawOutput = x.GetRawOutput }
+
     member internal x.ToStartInfo =
-        let p = new ProcessStartInfo()
-        match x.Command with
-        | ShellCommand s ->
-            p.UseShellExecute <- true
-            p.FileName <- s
-            p.Arguments <- null
-        | RawCommand (filename, args) ->
-            p.UseShellExecute <- false
-            p.FileName <- filename
-            p.Arguments <- args.ToStartInfo
-        match x.StandardInput with
-        | Inherit ->
-            p.RedirectStandardInput <- false
-        | UseStream _ | CreatePipe _ ->
-            p.RedirectStandardInput <- true
-        match x.StandardOutput with
-        | Inherit ->
-            p.RedirectStandardOutput <- false
-        | UseStream _ | CreatePipe _ ->
-            p.RedirectStandardOutput <- true
-        match x.StandardError with
-        | Inherit ->
-            p.RedirectStandardError <- false
-        | UseStream _ | CreatePipe _ ->
-            p.RedirectStandardError <- true
-                
-        let setEnv key var =
-            p.EnvironmentVariables.[key] <- var
-        x.Environment
-            |> Option.iter (Seq.iter (fun (key, value) -> setEnv key value))
-        p.WindowStyle <- ProcessWindowStyle.Hidden
-        p
-    member x.CommandLine =
-        match x.Command with
-        | ShellCommand s -> s
-        | RawCommand (f, arg) -> sprintf "%s %s" f arg.ToWindowsCommandLine
+        x.Proc.ToStartInfo
+
+    member x.OutputRedirected = x.OutputRedirected
+    member x.CommandLine = x.CommandLine
+
 module CreateProcess  =
     let emptyHook =
         { new IProcessHook with
             member __.Dispose () = ()
             member __.ProcessExited _ = ()
             member __.ParseSuccess _ = () }
+
+    let ofProc x =
+      { Command = x.Command
+        WorkingDirectory = x.WorkingDirectory
+        Environment = x.Environment
+        StandardInput = x.StandardInput
+        StandardOutput = x.StandardOutput
+        StandardError = x.StandardError
+        GetRawOutput = x.GetRawOutput
+        Setup = fun _ -> emptyHook
+        GetResult = fun _ -> () }
+
     let fromCommand command =
         {   Command = command
             WorkingDirectory = None
@@ -348,114 +315,17 @@ type ProcessResults<'a> =
     CreateProcess : CreateProcess<'a>
     Result : 'a }    
 module Proc =
-    // mono sets echo off for some reason, therefore interactive mode doesn't work as expected
-    // this enables this tty feature which makes the interactive mode work as expected
-    let private setEcho (b:bool) =
-        // See https://github.com/mono/mono/blob/master/mcs/class/corlib/System/ConsoleDriver.cs#L289
-        let t = System.Type.GetType("System.ConsoleDriver")
-        if Env.isMono then
-            let flags = System.Reflection.BindingFlags.Static ||| System.Reflection.BindingFlags.NonPublic
-            if isNull t then
-                eprintfn "Expected to find System.ConsoleDriver.SetEcho"
-                false
-            else
-                let setEchoMethod = t.GetMethod("SetEcho", flags)
-                if isNull setEchoMethod then
-                    eprintfn "Expected to find System.ConsoleDriver.SetEcho"
-                    false
-                else
-                    setEchoMethod.Invoke(null, [| b :> obj |]) :?> bool
-        else false
     let startRaw (c:CreateProcess<_>) =
       async {
         use hook = c.Setup()
-        let p = c.ToStartInfo
-        let commandLine = 
-            sprintf "%s> \"%s\" %s" p.WorkingDirectory p.FileName p.Arguments
-      
-        if Env.isVerbose then
-            printfn "%s... RedirectInput: %b, RedirectOutput: %b, RedirectError: %b" commandLine p.RedirectStandardInput p.RedirectStandardOutput p.RedirectStandardError
         
-        use toolProcess = new Process(StartInfo = p)
+        let! exitCode, output = RawProc.processStarter.Start(c.Proc)
         
-        let isStarted = ref false
-        let mutable readOutputTask = System.Threading.Tasks.Task.FromResult Stream.Null
-        let mutable readErrorTask = System.Threading.Tasks.Task.FromResult Stream.Null
-        let mutable redirectStdInTask = System.Threading.Tasks.Task.FromResult Stream.Null
-        let tok = new System.Threading.CancellationTokenSource()
-        let start() =
-            if not <| !isStarted then
-                toolProcess.EnableRaisingEvents <- true
-                setEcho true |> ignore
-                if not <| toolProcess.Start() then
-                    failwithf "could not start process: %s" commandLine
-                isStarted := true
-                
-                let handleStream parameter processStream isInputStream =
-                    async {
-                        match parameter with
-                        | Inherit ->
-                            return failwithf "Unexpected value"
-                        | UseStream (shouldClose, stream) ->
-                            if isInputStream then
-                                do! stream.CopyToAsync(processStream, 81920, tok.Token)
-                                    |> Async.AwaitTask
-                            else
-                                do! processStream.CopyToAsync(stream, 81920, tok.Token)
-                                    |> Async.AwaitTask
-                            return
-                                if shouldClose then stream else Stream.Null
-                        | CreatePipe (r) ->
-                            r.retrieveRaw := fun _ -> processStream
-                            return Stream.Null
-                    }
+        hook.ProcessExited(exitCode)
 
-                if p.RedirectStandardInput then
-                    redirectStdInTask <-
-                      handleStream c.StandardInput toolProcess.StandardInput.BaseStream true
-                      // Immediate makes sure we set the ref cell before we return...
-                      |> fun a -> Async.StartImmediateAsTask(a, cancellationToken = tok.Token)
-                      
-                if p.RedirectStandardOutput then
-                    readOutputTask <-
-                      handleStream c.StandardOutput toolProcess.StandardOutput.BaseStream false
-                      // Immediate makes sure we set the ref cell before we return...
-                      |> fun a -> Async.StartImmediateAsTask(a, cancellationToken = tok.Token)
-
-                if p.RedirectStandardError then
-                    readErrorTask <-
-                      handleStream c.StandardError toolProcess.StandardError.BaseStream false
-                      // Immediate makes sure we set the ref cell before we return...
-                      |> fun a -> Async.StartImmediateAsTask(a, cancellationToken = tok.Token)
-    
-        // Wait for the process to finish
-        let! exitEvent = 
-            toolProcess.Exited
-                // This way the handler gets added before actually calling start or "EnableRaisingEvents"
-                |> Event.guard start
-                |> Async.AwaitEvent
-                |> Async.StartImmediateAsTask
-        // Waiting for the process to exit (buffers)
-        toolProcess.WaitForExit()
-
-        let delay = System.Threading.Tasks.Task.Delay 500
-        let all =  System.Threading.Tasks.Task.WhenAll([readErrorTask; readOutputTask; redirectStdInTask])
-        let! t = System.Threading.Tasks.Task.WhenAny(all, delay)
-                 |> Async.AwaitTask
-        if t = delay then
-            eprintfn "At least one redirection task did not finish: \nReadErrorTask: %O, ReadOutputTask: %O, RedirectStdInTask: %O" readErrorTask.Status readOutputTask.Status redirectStdInTask.Status
-        tok.Cancel()
-        
-        // wait for finish -> AwaitTask has a bug which makes it unusable for chanceled tasks.
-        // workaround with continuewith
-        let! streams = all.ContinueWith (new System.Func<System.Threading.Tasks.Task<Stream[]>, Stream[]> (fun t -> t.GetAwaiter().GetResult())) |> Async.AwaitTask
-        for s in streams do s.Dispose()
-        setEcho false |> ignore
-        
-        hook.ProcessExited(toolProcess.ExitCode)
         let o, realResult =
-            match c.GetRawOutput with
-            | Some f -> f(), true
+            match output with
+            | Some f -> f, true
             | None -> { Output = ""; Error = "" }, false
 
         if Env.isVerbose && realResult then
@@ -471,8 +341,8 @@ module Proc =
                         "Could not parse output from process, but RawOutput was not retrieved."
                 raise <| System.Exception(msg, e)
         
-        hook.ParseSuccess toolProcess.ExitCode
-        return { ExitCode = toolProcess.ExitCode; CreateProcess = c; Result = result }
+        hook.ParseSuccess exitCode
+        return { ExitCode = exitCode; CreateProcess = c; Result = result }
       }
       // Immediate makes sure we set the ref cell before we return the task...
       |> Async.StartImmediateAsTask
@@ -487,7 +357,7 @@ module Proc =
     /// Convenience method when you immediatly want to await the result of 'start', just note that
     /// when used incorrectly this might lead to race conditions 
     /// (ie if you use StartAsTask and access reference cells in CreateProcess after that returns)
-    let startAndAwait c = start c |> Async.AwaitTask
+    let startAndAwait c = start c |> Async.AwaitTaskWithoutAggregate
 
     let ensureExitCodeWithMessageGetResult msg (r:ProcessResults<_>) =
         let { Setup = f } =
