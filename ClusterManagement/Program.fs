@@ -149,6 +149,16 @@ let handleArgs (argv:string array) =
                     printfn "Please specify a subcommand."
                     printfn "%s" (listRes.Parser.PrintUsage())
                     1
+            | Some (Plugin pluginRes) ->
+                checkDocker () |> Async.RunSynchronously
+                match pluginRes.TryGetSubCommand() with
+                | Some (PluginArgs.List listRes) ->
+                    
+                    0
+                | _ ->
+                    printfn "Please specify a subcommand."
+                    printfn "%s" (pluginRes.Parser.PrintUsage())
+                    1
             | Some (Volume res) ->
                 checkDocker () |> Async.RunSynchronously
                 match res.TryGetSubCommand() with

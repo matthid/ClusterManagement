@@ -151,6 +151,46 @@ type VolumeArgs =
             | Clone _ -> "Clone volumes from one cluster to another."
             | Delete _ -> "Delete a volume."
 
+type ListPluginArgs =
+    | [<AltCommandLine("-c")>] Cluster of string
+  with
+    interface IArgParserTemplate with
+        member this.Usage =
+            match this with
+            | Cluster _ -> "List the installed plugin of the given cluster instead of the available ones."
+
+type PluginInstallArgs =
+    | [<AltCommandLine("-c")>] Cluster of string
+    | [<AltCommandLine("-n")>] PluginName of string
+  with
+    interface IArgParserTemplate with
+        member this.Usage =
+            match this with
+            | Cluster _ -> "The cluster to install the plugin into."
+            | PluginName _ -> "The name of the plugin to install."
+
+type PluginUninstallArgs =
+    | [<AltCommandLine("-c")>] Cluster of string
+    | [<AltCommandLine("-n")>] PluginName of string
+  with
+    interface IArgParserTemplate with
+        member this.Usage =
+            match this with
+            | Cluster _ -> "The cluster to uninstall the plugin from."
+            | PluginName _ -> "The name of the plugin to uninstall."
+
+type PluginArgs =
+    | [<CliPrefix(CliPrefix.None)>] List of ParseResults<ListPluginArgs>
+    | [<CliPrefix(CliPrefix.None)>] Install of ParseResults<PluginInstallArgs>
+    | [<CliPrefix(CliPrefix.None)>] Uninstall of ParseResults<PluginUninstallArgs>
+  with
+    interface IArgParserTemplate with
+        member this.Usage =
+            match this with
+            | List _ -> "List all plugins."
+            | Install _ -> "Install a plugin into the cluster."
+            | Uninstall _ -> "Uninstall a plugin from the cluster."
+
 type ConfigSetArgs =
     | [<AltCommandLine("-c")>] [<Mandatory>] Cluster of string
     | Key of string
@@ -391,6 +431,7 @@ type MyArgs =
     | [<CliPrefix(CliPrefix.None)>] Cluster of ParseResults<ClusterArgs>
     | [<CliPrefix(CliPrefix.None)>] List of ParseResults<ListArgs>
     | [<CliPrefix(CliPrefix.None)>] Volume of ParseResults<VolumeArgs>
+    | [<CliPrefix(CliPrefix.None)>] Plugin of ParseResults<PluginArgs>
     | [<AltCommandLine("docker-machine")>] [<CliPrefix(CliPrefix.None)>] DockerMachine of ParseResults<DockerMachineArgs>
     | [<CliPrefix(CliPrefix.None)>] Config of ParseResults<ConfigArgs>
     | [<CliPrefix(CliPrefix.None)>] Provision of ParseResults<ProvisionArgs>
@@ -408,6 +449,7 @@ type MyArgs =
             | Cluster _ -> "Operate on a cluster."
             | List _ -> "Lists clusters."
             | Volume _ -> "Operate on volumes."
+            | Plugin _ -> "Install and uninstall plugins into and from the cluster."
             | Config _ -> "Operate on cluster configuration."
             | DockerMachine _ -> "Run docker-machine on a given cluster."
             | Provision _ -> "Provision machines on the cluster. You normally don't need to execute these commands manually."

@@ -62,13 +62,13 @@
     <Compile Include="IO.fs" />
     <Compile Include="Proc.fs" />
     <Compile Include="Bash.fs" />
-    <Compile Include="VolumeDriver.fs" />
     <Compile Include="DockerWrapper.fs" />
     <Compile Include="Which.fs" />
     <Compile Include="ZipFile.fs" />
     <Compile Include="Storage.fs" />
     <Compile Include="Config.fs" />
     <Compile Include="DockerMachine.fs" />
+    <Compile Include="Plugins.fs" />
     <Compile Include="Volume.fs" />
     <Compile Include="Deploy.fs" />
     <Compile Include="MachineProvider.fs" />

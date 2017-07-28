@@ -111,7 +111,7 @@ aws <command> *)
         async {
             match getProvider config with
             | AWS ->
-                do! HostInteraction.installRexRayPlugin "ebs" config nodeName nodeType
+                do! HostInteraction.installPlugin Plugin.Ebs config nodeName nodeType
             | Generic ->
                 ()
                 //do! HostInteraction.installRexRayPlugin "s3fs" config nodeName nodeType

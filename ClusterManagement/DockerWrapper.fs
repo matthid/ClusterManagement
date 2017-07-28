@@ -1,14 +1,7 @@
 ﻿namespace ClusterManagement
 
 module DockerImages =
-    type RexrayPlugins =
-        { PluginName : string; ImageName : string; Tag : string; Driver : VolumeDriver }
-    let rexrayPlugins =
-        [ { PluginName = "ebs"; ImageName = "rexray/ebs"; Tag = "0.9.0"; Driver = VolumeDriver.Ebs }
-          { PluginName = "s3fs"; ImageName = "rexray/s3fs"; Tag = "0.9.0"; Driver = VolumeDriver.S3fs } ]
-        |> Seq.map (fun p -> p.PluginName, p)
-        |> dict
-
+    type Image = { Name : string; Tag : string }
     let clusterManagementName, clusterManagementTag, clusterManagement =
         let clusterManagementName = "matthid/clustermanagement"
         let assembly = System.Reflection.Assembly.GetExecutingAssembly()
@@ -35,6 +28,19 @@ module DockerImages =
         else sprintf "%s:%s" clusterManagementName clusterManagementTag
 
 
+    let private plugins =
+        let (-->) s1 s2 = { Name = s1; Tag = s2 }
+        [ "rexray/ebs" --> "0.9.0"
+          "rexray/s3fs" --> "0.9.0"
+          clusterManagementName --> clusterManagementTag ]
+        |> Seq.map (fun i -> i.Name, i)
+        |> Map.ofSeq
+
+    let getImageTag image =
+        match plugins.TryFind image with
+        | Some pl -> pl.Tag
+        | None -> failwithf "Can not figure out which tag to use for image '%s'" image
+        
 module DockerWrapper =
     type HostSource =
         | Dir of string
