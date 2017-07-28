@@ -336,6 +336,28 @@ module DockerWrapper =
         |> CreateProcess.ensureExitCode
         |> CreateProcess.map (fun o -> parseVolumes o.Output)
 
+    type DockerPlugin =
+        { Id : string; Name : string; Description : string; Enabled : bool }
+    let parsePlugins (out:string) =
+        let splitLine (line:string) =
+            let (s:string array) = line.Split ([|'|'|], System.StringSplitOptions.RemoveEmptyEntries)
+            assert (s.Length = 5)
+            if s.Length <> 5 then
+                if s.Length > 5
+                then eprintfn "Could not parse output line from 'docker volume ls': %s" line
+                else failwithf "Could not parse output line from 'docker volume ls': %s" line
+            { Id = s.[1]; Name = s.[2]; Description = s.[4]; Enabled = bool.Parse(s.[0]) }
+
+        out.Split([| '\r'; '\n' |], System.StringSplitOptions.RemoveEmptyEntries)
+        |> Seq.map splitLine
+        |> Seq.toList
+
+    let listPlugins () =
+        createProcess ([|"plugin"; "ls"; "--format"; "{{.Enabled}}|{{.ID}}|{{.Name}}|{{.PluginReference}}|{{.Description}}"|] |> Arguments.OfArgs)
+        |> CreateProcess.redirectOutput
+        |> CreateProcess.ensureExitCode
+        |> CreateProcess.map (fun o -> parsePlugins o.Output)
+
     let removeVolume volume =
         createProcess ([|"volume"; "rm"; volume|] |> Arguments.OfArgs)
         |> CreateProcess.redirectOutput

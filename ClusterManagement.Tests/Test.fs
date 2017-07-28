@@ -7,10 +7,12 @@ open Swensen.Unquote
 
 type SimulatedProcess =
     { AssertProcess : RawCreateProcess -> unit; Output : ProcessOutput; ExitCode : int }
-    static member Simple (cmdLine : string, output) =
+    static member Error (cmdLine : string, exitCode, output, error) =
         let assertCmdLine (c:RawCreateProcess) =
             Assert.AreEqual (cmdLine, c.CommandLine)
-        { AssertProcess = assertCmdLine; Output = { Output = output; Error = "" }; ExitCode = 0 }
+        { AssertProcess = assertCmdLine; Output = { Output = output; Error = error }; ExitCode = exitCode }
+    static member Simple (cmdLine : string, output) =
+        SimulatedProcess.Error(cmdLine, 0, output, "")
 
 module TestHelper =
     let setProcessAssertion processes =
@@ -73,6 +75,16 @@ type Test() =
         ()
         
     [<Test>]
+    member __.``Parse plugin ls`` () =
+        let out = """true|b48750a02133|rexray/ebs:latest|docker.io/rexray/ebs:0.9.0|REX-Ray for Amazon EBS"""
+        let result = DockerWrapper.parsePlugins out
+        Assert.AreEqual(
+            [{ DockerWrapper.DockerPlugin.Id = "b48750a02133"; DockerWrapper.DockerPlugin.Name = "rexray/ebs:latest"
+               DockerWrapper.DockerPlugin.Enabled = true; DockerWrapper.DockerPlugin.Description = "REX-Ray for Amazon EBS" } ],
+            result)
+        
+        
+    [<Test>]
     member __.``Test Volume Create when cluster was not initialized`` () =
         use dir = TestHelper.changeTmpDir()
         [ ] |> TestHelper.setProcessAssertion
@@ -111,3 +123,66 @@ rexray/ebs:latest   yaaf-teamspeak_teamspeak"""
             { Volume.ClusterDockerVolume.Info = { Name = "cluster_volume"; Driver = "rexray/ebs" }
               Volume.ClusterDockerVolume.ClusterInfo = ci }
         Assert.AreEqual(expected, result)
+        
+    
+    [<Test>]
+    member __.``Test Machine create uses ROOT_SIZE`` () =
+        use dir = TestHelper.changeTmpDir()
+    
+        [ SimulatedProcess.Simple("""docker-machine "create" "--driver" "amazonec2" "--amazonec2-root-size" "32" "--amazonec2-region" "region" "machine" """.TrimEnd(), "")
+        ]
+            |> TestHelper.setProcessAssertion
+        ClusterConfig.setInitialConfig "cluster" false
+        ClusterConfig.setClusterInitialized "cluster" true
+        let clusterConf =
+            ClusterConfig.readClusterConfig "cluster"
+                |> ClusterConfig.setConfig "ROOT_SIZE" "32"
+                |> ClusterConfig.setConfig "AWS_REGION" "region"
+            //|> ClusterConfig.writeClusterConfig "cluster"
+        
+        CloudProviders.createMachine "cluster" "machine" clusterConf
+            |> Async.RunSynchronously
+    
+    [<Test>]
+    member __.``Install ebs Plugin executes correct docker commands when not already installed`` () =
+        use dir = TestHelper.changeTmpDir()
+    
+        [ SimulatedProcess.Error("""docker "plugin" "inspect" "rexray/ebs" """.TrimEnd(), 1, "[]", "Error: No such object: rexray/ebs")
+          SimulatedProcess.Simple("""docker "plugin" "install" "--disable" "--grant-all-permissions" "rexray/ebs" "EBS_ACCESSKEY=awskey" "EBS_SECRETKEY=awssecret" "EBS_REGION=region" """.TrimEnd(), "")
+          SimulatedProcess.Simple("""docker "plugin" "upgrade" "--skip-remote-check" "--grant-all-permissions" "rexray/ebs" "rexray/ebs:0.9.0" """.TrimEnd(), "")
+          SimulatedProcess.Simple("""docker "plugin" "enable" "rexray/ebs" """.TrimEnd(), "")
+        ]
+            |> TestHelper.setProcessAssertion
+        ClusterConfig.setInitialConfig "cluster" false
+        ClusterConfig.setClusterInitialized "cluster" true
+        let clusterConf =
+            ClusterConfig.readClusterConfig "cluster"
+                |> ClusterConfig.setConfig "AWS_ACCESS_KEY_ID" "awskey"
+                |> ClusterConfig.setConfig "AWS_ACCESS_KEY_SECRET" "awssecret"
+                |> ClusterConfig.setConfig "AWS_REGION" "region"
+            //|> ClusterConfig.writeClusterConfig "cluster"
+        
+        Plugins.installPlugin id Plugin.Ebs clusterConf
+            |> Async.RunSynchronously
+        
+    [<Test>]
+    member __.``Install s3fs Plugin executes correct docker commands when not already installed`` () =
+        use dir = TestHelper.changeTmpDir()
+    
+        [ SimulatedProcess.Error("""docker "plugin" "inspect" "rexray/s3fs" """.TrimEnd(), 1, "[]", "Error: No such object: rexray/s3fs")
+          SimulatedProcess.Simple("""docker "plugin" "install" "--disable" "--grant-all-permissions" "rexray/s3fs" "S3FS_ACCESSKEY=awskey" "S3FS_SECRETKEY=awssecret" "S3FS_REGION=region" """.TrimEnd(), "")
+          SimulatedProcess.Simple("""docker "plugin" "upgrade" "--skip-remote-check" "--grant-all-permissions" "rexray/s3fs" "rexray/s3fs:0.9.0" """.TrimEnd(), "")
+          SimulatedProcess.Simple("""docker "plugin" "enable" "rexray/s3fs" """.TrimEnd(), "")
+        ]
+            |> TestHelper.setProcessAssertion
+        ClusterConfig.setInitialConfig "cluster" false
+        ClusterConfig.setClusterInitialized "cluster" true
+        let clusterConf =
+            ClusterConfig.readClusterConfig "cluster"
+                |> ClusterConfig.setConfig "AWS_ACCESS_KEY_ID" "awskey"
+                |> ClusterConfig.setConfig "AWS_ACCESS_KEY_SECRET" "awssecret"
+                |> ClusterConfig.setConfig "AWS_REGION" "region"
+            //|> ClusterConfig.writeClusterConfig "cluster"
+        
+        Plugins.installPlugin id Plugin.S3fs clusterConf
+            |> Async.RunSynchronously

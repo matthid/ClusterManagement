@@ -27,7 +27,7 @@ module Plugins =
             Settings =
               [ "AWS_ACCESS_KEY_ID" --> "S3FS_ACCESSKEY"
                 "AWS_ACCESS_KEY_SECRET" --> "S3FS_SECRETKEY"
-                "AWS_REGION" --> "S3S_REGION" ] } ]
+                "AWS_REGION" --> "S3FS_REGION" ] } ]
     
         |> Seq.map (fun p -> p.Plugin, { p with Tag = DockerImages.getImageTag p.ImageName })
         |> Map.ofSeq
@@ -36,11 +36,19 @@ module Plugins =
         match plugins.TryFind p with
         | Some pl -> pl
         | None -> failwithf "Plugin '%s' was not found" p.Name
-    
-    
-    let installPlugin wrapProcess plugin (c:ClusterConfig.MyClusterConfig) =
+
+    let listPlugins wrapProcess =
       async {
-        if Env.isVerbose then printfn "installing and starting rexray services."
+        let! (result : ProcessResults<DockerWrapper.DockerPlugin list>) =
+            DockerWrapper.listPlugins()
+            |> wrapProcess
+            |> Proc.startRaw
+        return result
+      }
+
+    let installPlugin wrapProcess (plugin:Plugin) (c:ClusterConfig.MyClusterConfig) =
+      async {
+        if Env.isVerbose then printfn "installing and starting plugin '%s'." plugin.Name
 
         let forceConfig name =
             match ClusterConfig.getConfig name c with
@@ -60,7 +68,7 @@ module Plugins =
             |> wrapProcess
             |> Proc.startRaw
         if result.ExitCode = 0 then
-            // exists -> disable and set EBS_ACCESSKEY=%s EBS_SECRETKEY=%s EBS_REGION=%s
+            // exists -> disable and set settings, like EBS_ACCESSKEY=%s EBS_SECRETKEY=%s EBS_REGION=%s
             do!
                 (sprintf "plugin disable --force %s" pluginInfo.ImageName)
                 |> Arguments.OfWindowsCommandLine
@@ -79,7 +87,7 @@ module Plugins =
                 |> Proc.startAndAwait
                 |> Async.Ignore
         else
-            // Install rexray docker plugin
+            // Install docker plugin
             do!
                 (sprintf "plugin install --disable --grant-all-permissions %s %s"
                     pluginInfo.ImageName settingsCmdLine)

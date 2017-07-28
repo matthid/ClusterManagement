@@ -31,9 +31,17 @@ module CloudProviders =
         match getProvider clusterConfig with
         | AWS ->
             let awsRegion = (ClusterConfig.getConfig "AWS_REGION" clusterConfig).Value
-
+            let sizeArgs =
+                match ClusterConfig.getConfig "ROOT_SIZE" clusterConfig with
+                | Some size -> [|"--amazonec2-root-size";size|]
+                | None -> [||]
+            let args = 
+                [| yield "create"; yield "--driver"; yield "amazonec2"
+                   yield! sizeArgs
+                   yield "--amazonec2-region"; yield awsRegion; yield machineName |]
+                |> Arguments.OfArgs
             do!
-                DockerMachine.createProcess clusterName ([|"create";"--driver";"amazonec2";"--amazonec2-region";awsRegion; machineName|] |> Arguments.OfArgs)
+                DockerMachine.createProcess clusterName args
                 |> CreateProcess.ensureExitCodeWithMessage
                         "failed create new machine! If the error reads 'There is already a keypair' you should try to remove the corresponding key from the aws console."
                 |> Proc.startAndAwait
