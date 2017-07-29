@@ -82,8 +82,7 @@ type Test() =
             [{ DockerWrapper.DockerPlugin.Id = "b48750a02133"; DockerWrapper.DockerPlugin.Name = "rexray/ebs:latest"
                DockerWrapper.DockerPlugin.Enabled = true; DockerWrapper.DockerPlugin.Description = "REX-Ray for Amazon EBS" } ],
             result)
-        
-        
+
     [<Test>]
     member __.``Test Volume Create when cluster was not initialized`` () =
         use dir = TestHelper.changeTmpDir()

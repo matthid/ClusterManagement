@@ -151,9 +151,60 @@ let handleArgs (argv:string array) =
                     1
             | Some (Plugin pluginRes) ->
                 checkDocker () |> Async.RunSynchronously
+                let parsePlugin pluginName =
+                    match pluginName with
+                    | "s3fs" -> Plugin.S3fs
+                    | "ebs" -> Plugin.Ebs
+                    | _ -> failwithf "Unknown plugin '%s', use any of [%s]" pluginName (String.Join(",", Plugins.plugins |> Seq.map (fun p -> p.Name)))
+                                        
                 match pluginRes.TryGetSubCommand() with
                 | Some (PluginArgs.List listRes) ->
+                    let clusters =
+                        match listRes.TryGetResult <@ ListPluginArgs.Cluster @> with
+                        | Some cl -> [cl]
+                        | None ->
+                            ClusterInfo.getClusters()
+                            |> Seq.filter (fun c -> match c.IsInitialized with | Some true -> true | _ -> false)
+                            |> Seq.map (fun c -> c.Name) |> Seq.toList
                     
+                    let formatPrint name secretAvailable isInitialized =
+                        printfn "%15s | %12s | %10s" name secretAvailable isInitialized
+                    let formatPrintT clusterName pluginName pluginImage imageTag =
+                        formatPrint pluginName clusterName (sprintf "%s:%s" pluginImage imageTag)
+                    formatPrint "NAME" "Cluster" "Image"
+                    for cluster in clusters do
+                        Storage.openClusterWithStoredSecret cluster
+                        let plugins =
+                            Plugins.listPlugins (DockerMachine.sshExt cluster (DockerMachine.getMachineName cluster "master-01"))
+                            |> Async.RunSynchronously
+                        
+                        for plugin in plugins do
+                            formatPrintT cluster plugin.Plugin.Name plugin.ImageName plugin.Tag
+                        Storage.closeClusterWithStoredSecret cluster
+                    0
+                | Some (PluginArgs.Install installArgs) ->
+                    let cluster = installArgs.GetResult <@ PluginInstallArgs.Cluster @>
+                    let pluginName = installArgs.GetResult <@ PluginInstallArgs.PluginName @>
+                    let plugin = parsePlugin pluginName
+
+                    Storage.openClusterWithStoredSecret cluster
+                    
+                    Plugins.installToCluster cluster plugin
+                        |> Async.RunSynchronously
+                    
+                    Storage.closeClusterWithStoredSecret cluster
+                    0
+                | Some (PluginArgs.Uninstall installArgs) ->
+                    let cluster = installArgs.GetResult <@ PluginUninstallArgs.Cluster @>
+                    let pluginName = installArgs.GetResult <@ PluginUninstallArgs.PluginName @>
+                    let plugin = parsePlugin pluginName
+                    
+                    Storage.openClusterWithStoredSecret cluster
+                    
+                    Plugins.uninstallFromCluster cluster plugin
+                        |> Async.RunSynchronously
+                    
+                    Storage.closeClusterWithStoredSecret cluster
                     0
                 | _ ->
                     printfn "Please specify a subcommand."

@@ -337,7 +337,7 @@ module DockerWrapper =
         |> CreateProcess.map (fun o -> parseVolumes o.Output)
 
     type DockerPlugin =
-        { Id : string; Name : string; Description : string; Enabled : bool }
+        { Id : string; Image : string; Tag : string; Description : string; Enabled : bool }
     let parsePlugins (out:string) =
         let splitLine (line:string) =
             let (s:string array) = line.Split ([|'|'|], System.StringSplitOptions.RemoveEmptyEntries)
@@ -346,7 +346,14 @@ module DockerWrapper =
                 if s.Length > 5
                 then eprintfn "Could not parse output line from 'docker volume ls': %s" line
                 else failwithf "Could not parse output line from 'docker volume ls': %s" line
-            { Id = s.[1]; Name = s.[2]; Description = s.[4]; Enabled = bool.Parse(s.[0]) }
+            let sn = s.[2].Split([|':'|], System.StringSplitOptions.RemoveEmptyEntries)
+            assert (sn.Length <> 2)
+            let image, tag =
+                if sn.Length > 1 then sn.[0], sn.[1]
+                else s.[2], "latest"
+               
+            
+            { Id = s.[1]; Image = image; Tag = tag; Description = s.[4]; Enabled = bool.Parse(s.[0]) }
 
         out.Split([| '\r'; '\n' |], System.StringSplitOptions.RemoveEmptyEntries)
         |> Seq.map splitLine

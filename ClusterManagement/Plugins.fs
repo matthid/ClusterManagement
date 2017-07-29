@@ -15,36 +15,41 @@ type PluginInfo =
     { Plugin : Plugin; ImageName : string; Tag : string; Settings : PluginSetting list }
     
 module Plugins =
-    let private plugins =
+    let private nameMap, private imageMap, plugins =
         let (-->) s1 s2 = { ClusterSettingName = s1 ; PluginSettingName = s2 }
-        
-        [ { Plugin = Ebs; ImageName = "rexray/ebs"; Tag = ""
-            Settings =
-              [ "AWS_ACCESS_KEY_ID" --> "EBS_ACCESSKEY"
-                "AWS_ACCESS_KEY_SECRET" --> "EBS_SECRETKEY"
-                "AWS_REGION" --> "EBS_REGION" ] }
-          { Plugin = S3fs; ImageName = "rexray/s3fs"; Tag = ""
-            Settings =
-              [ "AWS_ACCESS_KEY_ID" --> "S3FS_ACCESSKEY"
-                "AWS_ACCESS_KEY_SECRET" --> "S3FS_SECRETKEY"
-                "AWS_REGION" --> "S3FS_REGION" ] } ]
-    
-        |> Seq.map (fun p -> p.Plugin, { p with Tag = DockerImages.getImageTag p.ImageName })
-        |> Map.ofSeq
+        let rawList =
+            [ { Plugin = Ebs; ImageName = "rexray/ebs"; Tag = ""
+                Settings =
+                  [ "AWS_ACCESS_KEY_ID" --> "EBS_ACCESSKEY"
+                    "AWS_ACCESS_KEY_SECRET" --> "EBS_SECRETKEY"
+                    "AWS_REGION" --> "EBS_REGION" ] }
+              { Plugin = S3fs; ImageName = "rexray/s3fs"; Tag = ""
+                Settings =
+                  [ "AWS_ACCESS_KEY_ID" --> "S3FS_ACCESSKEY"
+                    "AWS_ACCESS_KEY_SECRET" --> "S3FS_SECRETKEY"
+                    "AWS_REGION" --> "S3FS_REGION" ] } ]
+            |> List.map (fun p -> { p with Tag = DockerImages.getImageTag p.ImageName })
+        rawList |> Seq.map (fun p -> p.Plugin, p) |> Map.ofSeq,
+        rawList |> Seq.map (fun p -> p.ImageName, p) |> Map.ofSeq,
+        rawList |> List.map (fun p -> p.Plugin)
     
     let getPlugin p =
-        match plugins.TryFind p with
+        match nameMap.TryFind p with
         | Some pl -> pl
         | None -> failwithf "Plugin '%s' was not found" p.Name
 
-    let listPlugins wrapProcess =
+    let listPlugins wrapProcess=
       async {
-        let! (result : ProcessResults<DockerWrapper.DockerPlugin list>) =
+        let! (result:DockerWrapper.DockerPlugin list) =
             DockerWrapper.listPlugins()
             |> wrapProcess
-            |> Proc.startRaw
-        return result
+            |> Proc.startAndAwait
+        return
+            result
+            |> List.choose (fun p -> imageMap.TryFind p.Image)
       }
+      
+    
 
     let installPlugin wrapProcess (plugin:Plugin) (c:ClusterConfig.MyClusterConfig) =
       async {
@@ -120,4 +125,53 @@ module Plugins =
             |> Async.Ignore
       }
     
-    let getInstalledPlugins = ()
+    let uninstallPlugin wrapProcess (plugin:Plugin) =
+      async {
+        if Env.isVerbose then printfn "removing plugin '%s'." plugin.Name
+        
+        let pluginInfo = getPlugin plugin
+        
+        let! (result : ProcessResults<unit>) =
+            (sprintf "plugin inspect %s" pluginInfo.ImageName)
+            |> Arguments.OfWindowsCommandLine
+            |> DockerWrapper.createProcess
+            |> wrapProcess
+            |> Proc.startRaw
+        if result.ExitCode = 0 then
+            do!
+                (sprintf "plugin disable --force %s" pluginInfo.ImageName)
+                |> Arguments.OfWindowsCommandLine
+                |> DockerWrapper.createProcess
+                |> CreateProcess.ensureExitCode
+                |> wrapProcess
+                |> Proc.startAndAwait
+                |> Async.Ignore
+            do!
+                (sprintf "plugin rm --force %s"
+                    pluginInfo.ImageName)
+                |> Arguments.OfWindowsCommandLine
+                |> DockerWrapper.createProcess
+                |> CreateProcess.ensureExitCode
+                |> wrapProcess
+                |> Proc.startAndAwait
+                |> Async.Ignore
+      }
+    
+    let installToCluster cluster plugin =
+      async {
+        let i = Deploy.getInfoInternal cluster [||]
+        for node in i.Nodes do
+            do! installPlugin
+                    (DockerMachine.sshExt cluster node.MachineName)
+                    plugin
+                    i.ClusterConfig
+      }
+  
+    let uninstallFromCluster cluster plugin =
+      async {
+        let i = Deploy.getInfoInternal cluster [||]
+        for node in i.Nodes do
+            do! uninstallPlugin
+                    (DockerMachine.sshExt cluster node.MachineName)
+                    plugin
+      }
