@@ -110,6 +110,7 @@ module Volume =
         // This ensures the flocker volume is mounted on the master node
         // We don't even check if the volume is already mounted because this has two advantages:
         // - This way docker ensures for us to not umount the volume to somewhere else
+        // - It already fails if the volume is mounted elsewhere
         // docker run -d --rm --volume-driver flocker -v backup_yaaf-prod-seafile:/backup -v yaaf-prod-seafile:/data --name my_backup-volume-helper --net swarm-net -e NOSTART=true --entrypoint /sbin/my_init phusion/baseimage
         // docker exec -ti my_backup-volume-helper /bin/bash
         let! volInfo =
@@ -149,5 +150,29 @@ module Volume =
     let download cluster volName targetDir = copyContents "." CopyDirection.Download cluster volName targetDir
     let upload cluster volName targetDir = copyContents "." CopyDirection.Upload cluster volName targetDir
 
-    let clone fromCluster toCluster =
+    let clone volume fromCluster toCluster =
+      async {
+        let volNames =
+            match volume with
+            | Some vol -> [vol]
+            | None -> failwithf "Not jet implemented"
+        
+        for volName in volNames do
+            // On the dest-cluster run the clustermanagement container and mount the target volume
+            // use the regular download command :)
+            // TODO: Ensure that volName volume exists in 'dest'...
+            let! foundVolume = findVolume toCluster volName
+            match foundVolume with
+            | None -> failwithf "Volume '%s' was not found on destination cluster" volName
+            | Some volInfo ->
+                do!
+                    DockerMachine.createProcess toCluster
+                        (sprintf "ssh %s sudo docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v /:/host -v %s:/volume %s %s volume download --cluster %s --volume %s --localfolder /volume"
+                            "master-01" DockerImages.clusterManagement 
+                            volInfo.Info.Name (if Env.isVerbose then "-v" else "")
+                            fromCluster volName
+                         |> Arguments.OfWindowsCommandLine)
+                    |> CreateProcess.ensureExitCodeWithMessage (sprintf "failed to clone volume '%s'." volName)
+                    |> Proc.startAndAwait
         ()
+      }

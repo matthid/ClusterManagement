@@ -288,9 +288,16 @@ let handleArgs (argv:string array) =
 
                     Storage.closeClusterWithStoredSecret clusterName
                     0
-                | Some (VolumeArgs.Clone _) ->
-                    printfn "Not implemented."
-                    1
+                | Some (VolumeArgs.Clone cloneArgs) ->
+                    let sourceCluster = cloneArgs.GetResult <@ VolumeCloneArgs.SourceCluster @>
+                    let destCluster = cloneArgs.GetResult <@ VolumeCloneArgs.DestinationCluster @>
+                    
+                    let volName = cloneArgs.TryGetResult <@ VolumeCloneArgs.VolumeName @>
+                    
+                    Volume.clone volName sourceCluster destCluster
+                    |> Async.RunSynchronously
+                    
+                    0
                 | Some (VolumeArgs.Delete deleteArgs) ->
                     let clusterName = deleteArgs.GetResult <@ VolumeDeleteArgs.Cluster @>
                     let name = deleteArgs.GetResult <@ VolumeDeleteArgs.Name @>

@@ -217,22 +217,14 @@ module Cluster =
         Storage.closeClusterWithStoredSecret clusterName
 
         // From an high level perspective the above is already a fully functionaly cluster, as long as no configuration is required.
-        // therefore we should make sure to deploy consul and vault only with high-level functionality available to other software as well
+        // therefore we should make sure to deploy other stuff with high-level functionality available to other software as well
         // like `clustermanagement docker-machine ssh`
 
         // Deploy Swarm
         Deploy.deployIntegrated clusterName "DeploySwarm.fsx"
 
-        // Deploy Consul
-        // NOTE TO MYSELF: Consul is way to hard to deploy within swarm
-        // as containers will be assigned to new IPs Consul will not recover from outages...
-        //Deploy.deployIntegrated clusterName "DeployConsul.fsx"
-
         // Deploy ClusterManagement
         Deploy.deployIntegrated clusterName "DeployClusterManagement.fsx"
-
-        // Deploy Vault
-        //Deploy.deployIntegrated clusterName "DeployVault.fsx"
       }
 
     // Kill all containers which block deletion of volumes

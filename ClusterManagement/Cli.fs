@@ -112,12 +112,14 @@ type VolumeDeleteArgs =
 type VolumeCloneArgs =
     | SourceCluster of string
     | DestinationCluster of string
+    | VolumeName of string
   with
     interface IArgParserTemplate with
         member this.Usage =
             match this with
             | SourceCluster _ -> "The name of the cluster to copy the volumes from."
             | DestinationCluster _ -> "The name of the cluster to copy the volumes into."
+            | VolumeName _ -> "The name of the volume to clone (if not given all volumes will be cloned)."
 
 type VolumeCopyContentsArgs =
     | [<AltCommandLine("-c")>] Cluster of string
