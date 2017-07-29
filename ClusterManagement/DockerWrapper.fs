@@ -347,7 +347,7 @@ module DockerWrapper =
                 then eprintfn "Could not parse output line from 'docker volume ls': %s" line
                 else failwithf "Could not parse output line from 'docker volume ls': %s" line
             let sn = s.[2].Split([|':'|], System.StringSplitOptions.RemoveEmptyEntries)
-            assert (sn.Length <> 2)
+            assert (sn.Length = 2)
             let image, tag =
                 if sn.Length > 1 then sn.[0], sn.[1]
                 else s.[2], "latest"

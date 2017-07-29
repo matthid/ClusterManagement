@@ -79,7 +79,8 @@ type Test() =
         let out = """true|b48750a02133|rexray/ebs:latest|docker.io/rexray/ebs:0.9.0|REX-Ray for Amazon EBS"""
         let result = DockerWrapper.parsePlugins out
         Assert.AreEqual(
-            [{ DockerWrapper.DockerPlugin.Id = "b48750a02133"; DockerWrapper.DockerPlugin.Name = "rexray/ebs:latest"
+            [{ DockerWrapper.DockerPlugin.Id = "b48750a02133"
+               DockerWrapper.DockerPlugin.Image = "rexray/ebs"; DockerWrapper.DockerPlugin.Tag = "latest"
                DockerWrapper.DockerPlugin.Enabled = true; DockerWrapper.DockerPlugin.Description = "REX-Ray for Amazon EBS" } ],
             result)
 
