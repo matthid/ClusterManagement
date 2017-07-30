@@ -70,10 +70,12 @@ module Volume =
         return findVolumeFrom cluster name vols
       }
 
-    let create isGlobal cluster name (size:int64) =
+    let create isGlobal cluster name plugin opts =
       async {
+        let pluginInfo = Plugins.getPlugin plugin
+        do! Plugins.ensurePluginInstalled cluster plugin
+        
         // check if exists
-        // docker volume create --driver=rexray/ebs --name=test123 --opt=size=0.5
         let! foundVolume = findVolume cluster name
 
         match foundVolume with
@@ -82,22 +84,25 @@ module Volume =
             return v
         | None ->
             // docker volume create
-            let sizeInGB = decimal size / 1000000000.0m
-            let sizeInGB_rounded = Math.Max(1L, size / 1000000000L)
-            if Math.Abs(decimal sizeInGB_rounded - sizeInGB) > 0.0005m then
-                eprintfn "rexray accepts only gb, therefore we rounded your value to '%d'gb. To get rid of this warning use a multiple of 1000000000" sizeInGB_rounded
             // docker volume create --driver=rexray/ebs --name=test123 --opt=size=0.5
             let fullName = createFullName cluster name
             let volname = if isGlobal then name else fullName
             let! res =
-                DockerWrapper.createVolume volname "rexray/ebs" [("size", sprintf "%d" sizeInGB_rounded)]
+                DockerWrapper.createVolume volname pluginInfo.ImageName opts
                 |> DockerMachine.runSudoDockerOnNode cluster "master-01"
                 |> Proc.startRaw
             res |> Proc.ensureExitCodeGetResult |> ignore
             let ci =
                 if isGlobal then None else Some { SimpleName = name; Cluster = cluster }
-            return { Info = { Name = volname; Driver = "rexray/ebs" }; ClusterInfo = ci }
+            return { Info = { Name = volname; Driver = pluginInfo.ImageName }; ClusterInfo = ci }
       }
+
+
+    let createEbs isGlobal cluster name (sizeInGb:int64) =
+        create isGlobal cluster name Plugin.Ebs [("size", sprintf "%d" sizeInGb)]
+
+    let createS3fs isGlobal cluster name (sizeInGb:int64) =
+        create isGlobal cluster name Plugin.S3fs [("size", sprintf "%d" sizeInGb)]
 
     let copyContents fileName (direction:CopyDirection) cluster volName targetDir =
       async {

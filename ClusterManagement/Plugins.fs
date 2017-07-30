@@ -10,9 +10,12 @@ type Plugin =
     
 type PluginSetting =
     { ClusterSettingName: string; PluginSettingName : string }
-    
+
+type PluginOpt =
+    { Option : string; Description : string }
+
 type PluginInfo =
-    { Plugin : Plugin; ImageName : string; Tag : string; Settings : PluginSetting list }
+    { Plugin : Plugin; ImageName : string; Tag : string; Settings : PluginSetting list; CreateOpts : PluginOpt list }
     
 module Plugins =
     let private nameMap, private imageMap, plugins =
@@ -22,12 +25,14 @@ module Plugins =
                 Settings =
                   [ "AWS_ACCESS_KEY_ID" --> "EBS_ACCESSKEY"
                     "AWS_ACCESS_KEY_SECRET" --> "EBS_SECRETKEY"
-                    "AWS_REGION" --> "EBS_REGION" ] }
+                    "AWS_REGION" --> "EBS_REGION" ]
+                CreateOpts = [ { Option = "size"; Description = "the size of the volume in gigabytes" } ] }
               { Plugin = S3fs; ImageName = "rexray/s3fs"; Tag = ""
                 Settings =
                   [ "AWS_ACCESS_KEY_ID" --> "S3FS_ACCESSKEY"
                     "AWS_ACCESS_KEY_SECRET" --> "S3FS_SECRETKEY"
-                    "AWS_REGION" --> "S3FS_REGION" ] } ]
+                    "AWS_REGION" --> "S3FS_REGION" ]
+                CreateOpts = [ { Option = "size"; Description = "the size of the volume in gigabytes" } ]  } ]
             |> List.map (fun p -> { p with Tag = DockerImages.getImageTag p.ImageName })
         rawList |> Seq.map (fun p -> p.Plugin, p) |> Map.ofSeq,
         rawList |> Seq.map (fun p -> p.ImageName, p) |> Map.ofSeq,
@@ -174,4 +179,12 @@ module Plugins =
             do! uninstallPlugin
                     (DockerMachine.sshExt cluster node.MachineName)
                     plugin
+      }
+      
+    let ensurePluginInstalled cluster plugin =
+      async {
+        let! plugins = listPlugins (DockerMachine.sshExt cluster "master-01")
+        plugins
+        |> Seq.exists (fun p -> p.Plugin = plugin)
+        |> fun b -> if not b then failwithf "Plugin '%s' needs to be installed on cluster '%s' first!" plugin.Name cluster
       }
