@@ -90,7 +90,7 @@ type Test() =
         [ ] |> TestHelper.setProcessAssertion
         ClusterConfig.setInitialConfig "cluster" false
         let res = Assert.Throws<exn>(fun _ ->
-            Volume.create false "cluster" "volume" 1024L
+            Volume.create "cluster" "volume" 1024L
                 |> Async.StartImmediateAsTask
                 |> fun t -> t.GetAwaiter().GetResult()
                 |> ignore)
@@ -117,7 +117,7 @@ rexray/ebs:latest   yaaf-teamspeak_teamspeak"""
         ClusterConfig.setInitialConfig "cluster" false
         ClusterConfig.setClusterInitialized "cluster" true
         let result =
-            Volume.create false "cluster" "volume" 1024L
+            Volume.create "cluster" "volume" 1024L
                 |> Async.RunSynchronously
 
         let ci = Some { Volume.ClusterDockerInfo.SimpleName = "volume"; Volume.ClusterDockerInfo.Cluster = "cluster" }
