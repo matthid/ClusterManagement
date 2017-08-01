@@ -70,7 +70,7 @@ module Volume =
         return findVolumeFrom cluster name vols
       }
 
-    let create isGlobal cluster name plugin opts =
+    let createEx isGlobal cluster name plugin opts =
       async {
         let pluginInfo = Plugins.getPlugin plugin
         do! Plugins.ensurePluginInstalled cluster plugin
@@ -99,10 +99,18 @@ module Volume =
 
 
     let createEbs isGlobal cluster name (sizeInGb:int64) =
-        create isGlobal cluster name Plugin.Ebs [("size", sprintf "%d" sizeInGb)]
+        createEx isGlobal cluster name Plugin.Ebs [("size", sprintf "%d" sizeInGb)]
+
+    [<Obsolete "Please use createEbs or createEx instead. Make sure to update the size (as they use GB as unit)">]
+    let create isGlobal cluster name (size:int64) =
+        let sizeInGB = decimal size / 1000000000.0m
+        let sizeInGB_rounded = Math.Max(1L, size / 1000000000L)
+        if Math.Abs(decimal sizeInGB_rounded - sizeInGB) > 0.0005m then
+            eprintfn "rexray accepts only gb, therefore we rounded your value to '%d'gb. To get rid of this warning use a multiple of 1000000000" sizeInGB_rounded
+        createEbs isGlobal cluster name sizeInGB_rounded
 
     let createS3fs isGlobal cluster name (sizeInGb:int64) =
-        create isGlobal cluster name Plugin.S3fs [("size", sprintf "%d" sizeInGb)]
+        createEx isGlobal cluster name Plugin.S3fs [("size", sprintf "%d" sizeInGb)]
 
     let copyContents fileName (direction:CopyDirection) cluster volName targetDir =
       async {

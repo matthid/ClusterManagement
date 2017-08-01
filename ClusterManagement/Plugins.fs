@@ -167,7 +167,7 @@ module Plugins =
         let i = Deploy.getInfoInternal cluster [||]
         for node in i.Nodes do
             do! installPlugin
-                    (DockerMachine.sshExt cluster node.MachineName)
+                    (DockerMachine.runSudoDockerOnNode cluster node.MachineName)
                     plugin
                     i.ClusterConfig
       }
@@ -177,13 +177,13 @@ module Plugins =
         let i = Deploy.getInfoInternal cluster [||]
         for node in i.Nodes do
             do! uninstallPlugin
-                    (DockerMachine.sshExt cluster node.MachineName)
+                    (DockerMachine.runSudoDockerOnNode cluster node.MachineName)
                     plugin
       }
       
     let ensurePluginInstalled cluster plugin =
       async {
-        let! plugins = listPlugins (DockerMachine.sshExt cluster "master-01")
+        let! plugins = listPlugins (DockerMachine.runSudoDockerOnNode cluster "master-01")
         plugins
         |> Seq.exists (fun p -> p.Plugin = plugin)
         |> fun b -> if not b then failwithf "Plugin '%s' needs to be installed on cluster '%s' first!" plugin.Name cluster

@@ -99,6 +99,7 @@ type Test() =
     [<Test>]
     member __.``Test Volume Create when no matching one exists`` () =
         use dir = TestHelper.changeTmpDir()
+        let lspluginOut = """true|b48750a02133|rexray/ebs:latest|docker.io/rexray/ebs:0.9.0|REX-Ray for Amazon EBS"""
         let lsout = """
 DRIVER              VOLUME NAME
 flocker             backup_yaaf-prod-ldap
@@ -107,7 +108,8 @@ rexray/ebs:latest   yaaf-prod_unmounted
 rexray/ebs:latest   yaaf-teamspeak_clustermanagement
 rexray/ebs:latest   yaaf-teamspeak_teamspeak"""
 
-        [ SimulatedProcess.Simple("""docker-machine "ssh" "cluster-master-01" "'sudo' 'docker' 'volume' 'ls'" """.TrimEnd(), lsout)
+        [ SimulatedProcess.Simple("""docker-machine "ssh" "cluster-master-01" "'sudo' 'docker' 'plugin' 'ls' '--format' '{{.Enabled}}|{{.ID}}|{{.Name}}|{{.PluginReference}}|{{.Description}}'" """.TrimEnd(), lspluginOut)
+          SimulatedProcess.Simple("""docker-machine "ssh" "cluster-master-01" "'sudo' 'docker' 'volume' 'ls'" """.TrimEnd(), lsout)
           // Note: Size needs to be roundet to 1 (which is the minimum acceptable value)
           SimulatedProcess.Simple("""docker-machine "ssh" "cluster-master-01" "'sudo' 'docker' 'volume' 'create' '--name=cluster_volume' '--driver=rexray/ebs' '--opt=size=1'" """.TrimEnd(), "")
         ]

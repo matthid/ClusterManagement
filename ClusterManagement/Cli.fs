@@ -87,7 +87,8 @@ type ListVolumeArgs =
 
 type VolumeCreateArgs =
     | [<Mandatory>] [<AltCommandLine("-c")>] Cluster of string
-    | Size of int64
+    | [<AltCommandLine("-p")>] Plugin of string
+    | [<AltCommandLine("-o")>] Option of string * string
     | [<Mandatory>] [<AltCommandLine("-n")>] Name of string
     | [<AltCommandLine("-g")>] Global
   with
@@ -95,7 +96,16 @@ type VolumeCreateArgs =
         member this.Usage =
             match this with
             | Cluster _ -> "The name of the cluster to create the volume for."
-            | Size _ -> "The size of the new Volume in bytes. Defaults to 1G (1024 * 1024 * 1024)"
+            | Plugin _ -> "The plugin to use for the volume (defaults to some default plugin for the current cluster, for example ebs for aws)"
+            | Option _ ->
+                let infos = Plugins.plugins |> Seq.map (Plugins.getPlugin)
+                let opts (p:PluginInfo) =
+                    p.CreateOpts
+                    |> Seq.map (fun opt -> sprintf "'%s' -> %s" opt.Option opt.Description)
+                let formatPlugin (p:PluginInfo) =
+                    sprintf " Plugin '%s'\n\t%s" p.Plugin.Name (System.String.Join("\n\t", opts p))
+                let s = infos |> Seq.map (fun p -> formatPlugin p)
+                "Set an option for the current volume creation, possible options:\n" + System.String.Join("\n", s)
             | Global -> "Global -> Volume is not associated with any cluster and will not be deleted with the cluster."
             | Name _ -> "The name of the new Volume."
 

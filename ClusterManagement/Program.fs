@@ -35,6 +35,12 @@ let checkDocker () =
 
 open Argu
 
+let parsePlugin pluginName =
+    match pluginName with
+    | "s3fs" -> Plugin.S3fs
+    | "ebs" -> Plugin.Ebs
+    | _ -> failwithf "Unknown plugin '%s', use any of [%s]" pluginName (String.Join(",", Plugins.plugins |> Seq.map (fun p -> p.Name)))
+
 let handleArgs (argv:string array) =
     let restArgs, argv =
         match argv |> Seq.tryFindIndex (fun i -> i = "--") with
@@ -151,12 +157,6 @@ let handleArgs (argv:string array) =
                     1
             | Some (Plugin pluginRes) ->
                 checkDocker () |> Async.RunSynchronously
-                let parsePlugin pluginName =
-                    match pluginName with
-                    | "s3fs" -> Plugin.S3fs
-                    | "ebs" -> Plugin.Ebs
-                    | _ -> failwithf "Unknown plugin '%s', use any of [%s]" pluginName (String.Join(",", Plugins.plugins |> Seq.map (fun p -> p.Name)))
-                                        
                 match pluginRes.TryGetSubCommand() with
                 | Some (PluginArgs.List listRes) ->
                     let clusters =
@@ -175,7 +175,7 @@ let handleArgs (argv:string array) =
                     for cluster in clusters do
                         Storage.openClusterWithStoredSecret cluster
                         let plugins =
-                            Plugins.listPlugins (DockerMachine.sshExt cluster (DockerMachine.getMachineName cluster "master-01"))
+                            Plugins.listPlugins (DockerMachine.runSudoDockerOnNode cluster (DockerMachine.getMachineName cluster "master-01"))
                             |> Async.RunSynchronously
                         
                         for plugin in plugins do
@@ -245,13 +245,17 @@ let handleArgs (argv:string array) =
                     let clusterName = createArgs.GetResult <@ VolumeCreateArgs.Cluster @>
                     let name = createArgs.GetResult <@ VolumeCreateArgs.Name @>
                     let isGlobal = createArgs.Contains <@ VolumeCreateArgs.Global @>
-                    let size =
-                        match createArgs.TryGetResult <@ VolumeCreateArgs.Size @> with
-                        | Some s -> s
-                        | None -> 1024L * 1024L * 1024L
+                    let opts = createArgs.GetResults <@ VolumeCreateArgs.Option @>
+                    let plugin = createArgs.TryGetResult <@ VolumeCreateArgs.Plugin @>
 
                     Storage.openClusterWithStoredSecret clusterName
-                    Volume.create isGlobal clusterName name size
+                    let plugin =
+                        match plugin with
+                        | Some p -> parsePlugin p
+                        | None ->
+                            let cfg = ClusterConfig.readClusterConfig clusterName
+                            CloudProviders.defaultPlugin cfg
+                    Volume.createEx isGlobal clusterName name plugin opts
                     |> Async.RunSynchronously
                     |> ignore
                     Storage.closeClusterWithStoredSecret clusterName

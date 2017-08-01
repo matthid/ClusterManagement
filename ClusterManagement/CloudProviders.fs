@@ -26,6 +26,11 @@ module CloudProviders =
                 Config.ensureConfig clusterName n clusterConfig
             ()
 
+    let defaultPlugin clusterConfig =
+        match getProvider clusterConfig with
+        | AWS -> Plugin.Ebs
+        | _ -> Plugin.S3fs
+      
     let createMachine clusterName machineName clusterConfig =
       async {
         match getProvider clusterConfig with
