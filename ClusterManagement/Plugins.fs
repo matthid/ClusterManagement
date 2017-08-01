@@ -162,12 +162,15 @@ module Plugins =
                 |> Async.Ignore
       }
     
+    let listClusterPlugins cluster =
+        listPlugins (DockerMachine.runSudoDockerOnNode cluster "master-01")
+    
     let installToCluster cluster plugin =
       async {
         let i = Deploy.getInfoInternal cluster [||]
         for node in i.Nodes do
             do! installPlugin
-                    (DockerMachine.runSudoDockerOnNode cluster node.MachineName)
+                    (DockerMachine.runSudoDockerOnNode cluster node.Name)
                     plugin
                     i.ClusterConfig
       }
@@ -177,7 +180,7 @@ module Plugins =
         let i = Deploy.getInfoInternal cluster [||]
         for node in i.Nodes do
             do! uninstallPlugin
-                    (DockerMachine.runSudoDockerOnNode cluster node.MachineName)
+                    (DockerMachine.runSudoDockerOnNode cluster node.Name)
                     plugin
       }
       

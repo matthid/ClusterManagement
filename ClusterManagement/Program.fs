@@ -175,7 +175,7 @@ let handleArgs (argv:string array) =
                     for cluster in clusters do
                         Storage.openClusterWithStoredSecret cluster
                         let plugins =
-                            Plugins.listPlugins (DockerMachine.runSudoDockerOnNode cluster (DockerMachine.getMachineName cluster "master-01"))
+                            Plugins.listClusterPlugins cluster
                             |> Async.RunSynchronously
                         
                         for plugin in plugins do

@@ -188,3 +188,23 @@ rexray/ebs:latest   yaaf-teamspeak_teamspeak"""
         
         Plugins.installPlugin id Plugin.S3fs clusterConf
             |> Async.RunSynchronously
+            
+            
+     
+    
+    [<Test>]
+    member __.``Test list cluster plugins`` () =
+        use dir = TestHelper.changeTmpDir()
+    
+        let lspluginOut = """true|b48750a02133|rexray/ebs:latest|docker.io/rexray/ebs:0.9.0|REX-Ray for Amazon EBS"""
+        [ SimulatedProcess.Simple("""docker-machine "ssh" "cluster-master-01" "'sudo' 'docker' 'plugin' 'ls' '--format' '{{.Enabled}}|{{.ID}}|{{.Name}}|{{.PluginReference}}|{{.Description}}'" """.TrimEnd(), lspluginOut)
+        ]
+            |> TestHelper.setProcessAssertion
+        ClusterConfig.setInitialConfig "cluster" false
+        ClusterConfig.setClusterInitialized "cluster" true
+        
+        let result = 
+            Plugins.listClusterPlugins "cluster"
+            |> Async.RunSynchronously
+        let expected = [ Plugins.getPlugin Plugin.Ebs ]
+        Assert.AreEqual (expected, result)
