@@ -277,7 +277,12 @@ module Storage =
             |> GlobalConfig.readSecret cluster
         match secret with
         | Some s ->
+            Output.addSecret s "CLUSTER_SECRET"
             openCluster cluster s
+            
+            ClusterConfig.readClusterConfig cluster
+            |> ClusterConfig.getTokens
+            |> Seq.iter (fun tok -> Output.addSecret tok.Value (sprintf "TOK_%s" tok.Name))
         | None ->
             failwithf "For cluster '%s' no stored secret was found. Please use decrypt to store one." cluster
 

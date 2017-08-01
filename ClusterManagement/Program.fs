@@ -147,7 +147,7 @@ let handleArgs (argv:string array) =
                         printfn "%15s | %12s | %10s" name secretAvailable isInitialized
                     let formatPrintT name secretAvailable isInitialized =
                         formatPrint name (sprintf "%b" secretAvailable) (match isInitialized with Some b -> sprintf "%b" b| None -> "NA")
-                    formatPrint "NAME" "SECRET KNWON" "INITIALIZED"
+                    formatPrint "NAME" "SECRET KNOWN" "INITIALIZED"
                     ClusterInfo.getClusters()
                     |> Seq.iter(fun c -> formatPrintT c.Name c.SecretAvailable c.IsInitialized)
                     0
@@ -418,7 +418,7 @@ let handleArgs (argv:string array) =
                             |> Seq.toList
                     let formatPrint key value cluster =
                         if includeValues then
-                            printfn "%25s | %25s | %20s" key value cluster
+                            Printf.printfn "%25s | %25s | %20s" key value cluster
                         else
                             printfn "%25s | %20s" key cluster
                     let formatPrintT key value cluster =
