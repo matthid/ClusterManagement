@@ -15,10 +15,14 @@ module Volume =
 
     let createFullName cluster (name:string) =
         Config.checkName name
-        sprintf "%s_%s" cluster name
+        sprintf "%s.%s" cluster name
 
     let tryGetClusterInfo (fullName:string) =
-        let i = fullName.IndexOf('_')
+        let i = fullName.IndexOf('.')
+        let i =
+            if i < 0 then
+                fullName.IndexOf('_')
+            else i
         if i < 0 then
             None
         else
