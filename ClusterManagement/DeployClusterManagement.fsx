@@ -20,8 +20,10 @@ runDocker "service rm clustermanagement"
     |> ignore
 
 // CM docker-machine -c <cluster> -- ssh blub-master-01 ifconfig -> get docker0 ip
+let plugin =
+    CloudProviders.defaultPlugin d.ClusterConfig
 let volInfo =
-    Volume.create false d.ClusterName "clustermanagement" (1024L * 1024L * 1024L) // 1 GB
+    Volume.createEx false d.ClusterName "clustermanagement" plugin [("size", sprintf "%d" 1)]
     |> Async.RunSynchronously
 
 // upload config to the volume
