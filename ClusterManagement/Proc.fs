@@ -328,15 +328,37 @@ module Proc =
             | Some f -> f, true
             | None -> { Output = ""; Error = "" }, false
 
+        let strip (s:string) =
+            let subString (s:string) =
+                if s.Length < 300 then s
+                else sprintf "%s...%s" (s.Substring(0, 500)) (s.Substring(s.Length - 500))
+                
+            if s.Length < 1000 then
+                s
+            else
+                let splits = s.Split([|"\n"|], System.StringSplitOptions.None)
+                if splits.Length <= 1 then
+                    // We need to use substring
+                    subString s
+                else
+                    splits
+                    |> Seq.take 10
+                    |> fun s -> Seq.append s [" [ ... ] "]
+                    |> fun s -> Seq.append s (splits |> Seq.skip (splits.Length - 10))
+                    |> Seq.map subString
+                    |> fun s -> System.String.Join("\n", s)
+                    
+        let strippedOutput = lazy strip o.Output
+        let strippedError = lazy strip o.Error
         if Env.isVerbose && realResult then
-            printfn "Process Output: %s, Error: %s" o.Output o.Error
+            printfn "Process Output: %s, Error: %s" strippedOutput.Value strippedError.Value
 
         let result =
             try c.GetResult o
             with e ->
                 let msg =
                     if realResult then
-                        sprintf "Could not parse output from process, StdOutput: %s, StdError %s" o.Output o.Error
+                        sprintf "Could not parse output from process, StdOutput: %s, StdError %s" strippedOutput.Value strippedError.Value
                     else
                         "Could not parse output from process, but RawOutput was not retrieved."
                 raise <| System.Exception(msg, e)
