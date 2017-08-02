@@ -330,8 +330,10 @@ module Proc =
 
         let strip (s:string) =
             let subString (s:string) =
-                if s.Length < 300 then s
-                else sprintf "%s...%s" (s.Substring(0, 500)) (s.Substring(s.Length - 500))
+                let splitMax = 300
+                let half = splitMax / 2
+                if s.Length < splitMax then s
+                else sprintf "%s [...] %s" (s.Substring(0, half)) (s.Substring(s.Length - half))
                 
             if s.Length < 1000 then
                 s
