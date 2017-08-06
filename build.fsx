@@ -11,10 +11,6 @@ open Fake.ReleaseNotesHelper
 open System
 open System.IO
 
-// --------------------------------------------------------------------------------------
-// START TODO: Provide project-specific details below
-// --------------------------------------------------------------------------------------
-
 // Information about the project are used
 //  - for version and project name in generated AssemblyInfo file
 //  - by the generated NuGet package
@@ -79,6 +75,8 @@ Target "Build" (fun _ ->
     !! solutionFile
     |> MSBuildRelease "" "Rebuild"
     |> ignore
+    
+    CopyFile "ClusterManagement/bin/Release/FSharp.Data.DesignTime.dll" "packages/FSharp.Data/lib/net40/FSharp.Data.DesignTime.dll"
 )
 
 

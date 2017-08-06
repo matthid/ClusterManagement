@@ -22,7 +22,8 @@ module Deploy =
     let private session =
         lazy
             let s = ScriptHost.CreateNew(defines = ["CLUSTERMANGEMENT"])
-            s.Reference(assembly.Location)
+            s.Include(System.IO.Path.GetDirectoryName assembly.Location)
+            s.Reference(System.IO.Path.GetFileName assembly.Location)
             s
 
     let mutable private info = Unchecked.defaultof<_>
@@ -52,17 +53,18 @@ module Deploy =
     let deploy cluster scriptFile args =
       //async {
         let session = session.Force()
-        let name = System.IO.Path.GetFileName scriptFile
-        let targetPath = System.IO.Path.Combine(assemblyDir, name)
+        //let scriptDir = System.IO.Path.GetDirectoryName scriptFile
+        //let name = System.IO.Path.GetFileName scriptFile
+        //let targetPath = System.IO.Path.Combine(assemblyDir, name)
         let fullScriptPath = System.IO.Path.GetFullPath scriptFile
-        if targetPath <> fullScriptPath then
-            System.IO.File.Copy(fullScriptPath, targetPath, true)
+        //if targetPath <> fullScriptPath then
+        //    System.IO.File.Copy(fullScriptPath, targetPath, true)
 
         Storage.openClusterWithStoredSecret cluster
 
         info <- getInfoInternal cluster args
 
-        session.Load (targetPath)
+        session.Load (fullScriptPath)
 
         info <- Unchecked.defaultof<_>
 
