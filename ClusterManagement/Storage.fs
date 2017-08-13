@@ -42,8 +42,11 @@ module StoragePath =
 
     let getTempStoragePath () = tempStoragePath |> ensureAndReturnDir
 
-    let getClusterDirectory name =
+    let getClusterDirectoryNoCreate name =
         Path.Combine (tempStoragePath, name)
+
+    let getClusterDirectory name =
+        getClusterDirectoryNoCreate name
         |> ensureAndReturnDir
 
 
@@ -267,8 +270,12 @@ module Storage =
         File.Exists (getClusterFile name)
 
     let closeCluster name password =
-        let dir = getClusterDirectory name
-        Zip.zipAndEncrypt (getClusterFile name) password dir
+        let dir = getClusterDirectoryNoCreate name
+        if not (Directory.Exists dir) then
+            if Env.isVerbose then
+                eprintfn "Cluster directory doesn't exist, assuming cluster '%s' was already closed" name
+        else
+            Zip.zipAndEncrypt (getClusterFile name) password dir
         Directory.Delete(dir, true)
 
     let openClusterWithStoredSecret cluster =
@@ -279,7 +286,7 @@ module Storage =
         | Some s ->
             Output.addSecret s "CLUSTER_SECRET"
             openCluster cluster s
-            
+
             ClusterConfig.readClusterConfig cluster
             |> ClusterConfig.getTokens
             |> Seq.iter (fun tok -> Output.addSecret tok.Value (sprintf "TOK_%s" tok.Name))

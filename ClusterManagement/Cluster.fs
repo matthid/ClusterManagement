@@ -345,3 +345,15 @@ module Cluster =
                 failwithf "This cluster is already initialized. Use --force to delete it anyway."
 
         Storage.deleteCluster clusterName
+
+    let updateConfig clusterName =
+        let wasOpen = ClusterInfo.getOpenedClusters() |> Seq.exists (fun c -> c.Name = clusterName)
+
+        if wasOpen then
+            Storage.closeClusterWithStoredSecret clusterName
+
+        // We simply re-deploy clustermanagement
+        Deploy.deployIntegrated clusterName "DeployClusterManagement.fsx"
+
+        if wasOpen then
+            Storage.openClusterWithStoredSecret clusterName

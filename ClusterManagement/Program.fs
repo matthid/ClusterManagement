@@ -166,7 +166,7 @@ let handleArgs (argv:string array) =
                             ClusterInfo.getClusters()
                             |> Seq.filter (fun c -> match c.IsInitialized with | Some true -> true | _ -> false)
                             |> Seq.map (fun c -> c.Name) |> Seq.toList
-                    
+
                     let formatPrint name secretAvailable isInitialized =
                         printfn "%15s | %12s | %10s" name secretAvailable isInitialized
                     let formatPrintT clusterName pluginName pluginImage imageTag =
@@ -177,7 +177,7 @@ let handleArgs (argv:string array) =
                         let plugins =
                             Plugins.listClusterPlugins cluster
                             |> Async.RunSynchronously
-                        
+
                         for plugin in plugins do
                             formatPrintT cluster plugin.Plugin.Name plugin.ImageName plugin.Tag
                         Storage.closeClusterWithStoredSecret cluster
@@ -188,22 +188,22 @@ let handleArgs (argv:string array) =
                     let plugin = parsePlugin pluginName
 
                     Storage.openClusterWithStoredSecret cluster
-                    
+
                     Plugins.installToCluster cluster plugin
                         |> Async.RunSynchronously
-                    
+
                     Storage.closeClusterWithStoredSecret cluster
                     0
                 | Some (PluginArgs.Uninstall installArgs) ->
                     let cluster = installArgs.GetResult <@ PluginUninstallArgs.Cluster @>
                     let pluginName = installArgs.GetResult <@ PluginUninstallArgs.PluginName @>
                     let plugin = parsePlugin pluginName
-                    
+
                     Storage.openClusterWithStoredSecret cluster
-                    
+
                     Plugins.uninstallFromCluster cluster plugin
                         |> Async.RunSynchronously
-                    
+
                     Storage.closeClusterWithStoredSecret cluster
                     0
                 | _ ->
@@ -295,12 +295,12 @@ let handleArgs (argv:string array) =
                 | Some (VolumeArgs.Clone cloneArgs) ->
                     let sourceCluster = cloneArgs.GetResult <@ VolumeCloneArgs.SourceCluster @>
                     let destCluster = cloneArgs.GetResult <@ VolumeCloneArgs.DestinationCluster @>
-                    
+
                     let volName = cloneArgs.TryGetResult <@ VolumeCloneArgs.VolumeName @>
-                    
+
                     Volume.clone volName sourceCluster destCluster
                     |> Async.RunSynchronously
-                    
+
                     0
                 | Some (VolumeArgs.Delete deleteArgs) ->
                     let clusterName = deleteArgs.GetResult <@ VolumeDeleteArgs.Cluster @>
@@ -442,8 +442,7 @@ let handleArgs (argv:string array) =
                 | Some (ConfigArgs.UpdateCluster updateArgs) ->
                     let clusterName = updateArgs.GetResult <@ ConfigUpdateClusterArgs.Cluster @>
 
-                    // We simply re-deploy clustermanagement
-                    Deploy.deployIntegrated clusterName "DeployClusterManagement.fsx"
+                    Cluster.updateConfig clusterName
                     0
                 | _ ->
                     printfn "Please specify a subcommand."
