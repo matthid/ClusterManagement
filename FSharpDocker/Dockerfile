@@ -4,10 +4,10 @@ FROM buildpack-deps:trusty
 # modified from https://github.com/fsprojects/docker-fsharp/blob/master/4.1.18/mono/Dockerfile
 # and https://github.com/mono/docker/blob/5d27cb132d84e12b8d983f4690c1ef716dc177db/5.0.0.100/Dockerfile
 ENV MONO_THREADS_PER_CPU 50
-RUN MONO_VERSION=5.0.1 && \
-	DOCKER_CHANNEL=edge \
-	DOCKER_VERSION=17.05.0-ce \
-	DOCKER_MACHINE_VERSION=v0.11.0 \
+RUN MONO_VERSION=5.2.0 && \
+	DOCKER_CHANNEL=stable \
+	DOCKER_VERSION=17.06.1-ce \
+	DOCKER_MACHINE_VERSION=v0.12.2 \
     FSHARP_VERSION=4.1.18 && \
     FSHARP_PREFIX=/usr && \
     FSHARP_GACDIR=/usr/lib/mono/gac && \
@@ -41,4 +41,4 @@ RUN MONO_VERSION=5.0.1 && \
     rm -rf /tmp/src /tmp/NuGetScratch ~/.nuget ~/.config ~/.local && \
     apt-get purge -y autoconf libtool make git automake curl
 
-# docker build --squash ./FSharpDocker -t matthid/fsharp-docker:latest -t matthid/fsharp-docker:0.2.0 && docker push matthid/fsharp-docker:0.2.0 && docker push matthid/fsharp-docker:latest
+# docker build --squash ./FSharpDocker -t matthid/fsharp-docker:latest -t matthid/fsharp-docker:0.3.0 && docker push matthid/fsharp-docker:0.3.0 && docker push matthid/fsharp-docker:latest

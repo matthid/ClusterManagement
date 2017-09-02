@@ -1,3 +1,7 @@
+# 0.3.1
+
+* Update dependencies to fix some bugs.
+
 # 0.3
 
 * Move to rexray instead of flocker.
