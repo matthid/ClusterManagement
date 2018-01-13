@@ -1,3 +1,7 @@
+# 0.3.2
+
+* Fix container-id detection with :/docker-ce/docker/ path.
+
 # 0.3.1
 
 * Update dependencies to fix some bugs.
@@ -8,6 +12,10 @@
 * Intoduce plugins
 * Huge refactorings
 * Allow scripts to `#load` other scripts
+
+# 0.2.2
+
+* Fix container-id detection with :/docker-ce/docker/ path.
 
 # 0.2.1
 
