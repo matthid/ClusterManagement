@@ -98,7 +98,7 @@ module DockerWrapper =
 
         // Find our own container-id and save all binds for later mapping.
         if System.IO.File.Exists("/proc/self/cgroup") then
-            let searchStr = ":/docker/"
+            let searchStr = "/docker/"
             let cgroupString = System.IO.File.ReadAllLines("/proc/self/cgroup")
             let dockerId =
                 cgroupString
