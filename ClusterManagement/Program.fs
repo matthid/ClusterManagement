@@ -58,7 +58,7 @@ let handleArgs (argv:string array) =
     match results with
     | Choice1Of2 results ->
         Env.isVerbose <- results.Contains <@ MyArgs.Verbose @>
-        let printVersion () = printfn "Version: 0.3.2 (%O)" (System.Reflection.Assembly.GetExecutingAssembly().GetName().Version)
+        let printVersion () = printfn "Version: 0.3.3 (%O)" (System.Reflection.Assembly.GetExecutingAssembly().GetName().Version)
         if Env.isVerbose then
             printVersion ()
             printfn "Docker-Image: %s" DockerImages.clusterManagement

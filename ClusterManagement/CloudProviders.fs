@@ -40,9 +40,14 @@ module CloudProviders =
                 match ClusterConfig.getConfig "ROOT_SIZE" clusterConfig with
                 | Some size -> [|"--amazonec2-root-size";size|]
                 | None -> [||]
+            let instanceArgs =
+                match ClusterConfig.getConfig "AWS_INSTANCE_TYPE" clusterConfig with
+                | Some instance -> [|"--amazonec2-instance-type";instance|]
+                | None -> [||]
             let args = 
                 [| yield "create"; yield "--driver"; yield "amazonec2"
                    yield! sizeArgs
+                   yield! instanceArgs
                    yield "--amazonec2-region"; yield awsRegion; yield machineName |]
                 |> Arguments.OfArgs
             do!

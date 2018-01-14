@@ -68,6 +68,10 @@ cm config set -c my-cluster --key AWS_ZONE --value eu-central-1a
 cm config set -c my-cluster --key AWS_REGION --value eu-central-1
 cm config set -c my-cluster --key AWS_ACCESS_KEY_ID --value <aws-key-id>
 cm config set -c my-cluster --key AWS_ACCESS_KEY_SECRET --value <aws-key-secret>
+
+# Optional
+cm config set -c my-cluster --key ROOT_SIZE --value 32
+cm config set -c my-cluster --key AWS_INSTANCE_TYPE --value m3.medium
 ```
 
 

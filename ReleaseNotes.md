@@ -1,3 +1,7 @@
+# 0.3.3
+
+* Add `AWS_INSTANCE_TYPE` to allow to set the aws instance type.
+
 # 0.3.2
 
 * Fix container-id detection with :/docker-ce/docker/ path.
