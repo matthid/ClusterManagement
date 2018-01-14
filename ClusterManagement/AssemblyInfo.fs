@@ -36,7 +36,7 @@ open System.Runtime.InteropServices
 // [<assembly: AssemblyVersion("1.0.*")>]
 [<assembly: AssemblyVersion("0.3.*")>]
 // Should be equal to the docker-tag
-[<assembly: AssemblyFileVersion("0.3.3")>]
+[<assembly: AssemblyFileVersion("0.3.4")>]
 
 do
     ()

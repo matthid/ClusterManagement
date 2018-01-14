@@ -1,3 +1,7 @@
+# 0.3.4
+
+* Fix crash on initializing cluster.
+
 # 0.3.3
 
 * Add `AWS_INSTANCE_TYPE` to allow to set the aws instance type.

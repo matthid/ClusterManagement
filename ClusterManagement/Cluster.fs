@@ -137,7 +137,7 @@ module Cluster =
             if Env.isVerbose then printfn "create '%s' docker machine." machine
 
             let! res =
-                DockerMachine.createProcess clusterName ([|"status"; machine|] |> Arguments.OfArgs)
+                DockerMachine.createProcessRaw true clusterName ([|"status"; machine|] |> Arguments.OfArgs)
                 |> Proc.startRaw
                 |> Async.AwaitTask
             if res.ExitCode = 0 then // already exists
@@ -169,6 +169,8 @@ module Cluster =
                      |> Arguments.OfWindowsCommandLine)
                 |> CreateProcess.ensureExitCode
                 |> Proc.startAndAwait
+
+            // TODO: echo 'ClientAliveInterval 9' >> /etc/ssh/sshd_config
 
             // provision machine / rexray
             if Env.isVerbose then printfn "upload provision config '%s'." machine
